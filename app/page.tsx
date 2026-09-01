@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
 
 type Employee = {
+  id?: string;
+  employee_key: string | null;
+
   employee_code: string;
   vendor: string;
   branch: string;
@@ -27,11 +34,14 @@ type Employee = {
   status: string;
 };
 type Claim = {
+  id?: string;
+
   policy_name: string;
   reference_no: string;
   claim_status: string;
   relationship: string;
   employee_name: string;
+  id_card: string;
   plan: number | null;
   claim_type: string;
   hospital_date: string | null;
@@ -42,6 +52,7 @@ type Claim = {
   claim_no: string;
   affiliation: string;
 };
+
 // =========================
 // แปลงวันที่จาก Excel
 // =========================
@@ -84,8 +95,81 @@ function formatExcelDate(value: any): string | null {
 
   return null;
 }
+// =========================
+// สร้างชื่อสำหรับ Match
+// =========================
+const normalizeName = (value: any) => {
+  return String(value ?? "")
+    .replace(/\u00A0/g, " ")
 
+    // คำนำหน้าชื่อ
+    .replace(/นาย/g, "")
+    .replace(/นางสาว/g, "")
+    .replace(/นาง/g, "")
 
+    .replace(/น\.\s*ส\./g, "")
+    .replace(/น\s*ส\./g, "")
+    .replace(/น\.ส/g, "")
+
+    // อังกฤษ
+    .replace(/\bmr\.?/gi, "")
+    .replace(/\bmrs\.?/gi, "")
+    .replace(/\bmiss\.?/gi, "")
+    .replace(/\bms\.?/gi, "")
+
+    // ลบอักขระแปลก
+    .replace(/[.,\-()/\\]/g, "")
+
+    // ลบช่องว่างทั้งหมด
+    .replace(/\s+/g, "")
+
+    .trim()
+    .toLowerCase();
+};
+// =========================
+// Normalize ข้อมูลสำหรับ Match
+// =========================
+const normalizeText = (value: any) => {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+};
+
+// =========================
+// สร้าง Employee Key
+// Vendor + Employee Code + Effective Date
+// หรือ Vendor + ID Card + Effective Date
+// หรือ Vendor + ชื่อ + นามสกุล + Effective Date
+// =========================
+const createEmployeeKey = (
+  vendor: string,
+  employeeCode: string,
+  firstName: string,
+  lastName: string,
+  idCard: string,
+  effectiveDate: string | null
+) => {
+  const cleanVendor = normalizeText(vendor);
+  const cleanCode = normalizeText(employeeCode);
+  const cleanFirstName = normalizeText(firstName);
+  const cleanLastName = normalizeText(lastName);
+  const cleanIdCard = normalizeText(idCard);
+  const cleanEffectiveDate = normalizeText(effectiveDate);
+
+  // ถ้ามีรหัสพนักงาน + วันที่มีผล
+  if (cleanCode) {
+    return `${cleanVendor}|code|${cleanCode}|effective|${cleanEffectiveDate}`;
+  }
+
+  // ถ้าไม่มีรหัสพนักงาน แต่มีบัตรประชาชน
+  if (cleanIdCard) {
+    return `${cleanVendor}|id|${cleanIdCard}|effective|${cleanEffectiveDate}`;
+  }
+
+  // ถ้าไม่มีทั้งรหัสและบัตรประชาชน
+  return `${cleanVendor}|name|${cleanFirstName}|${cleanLastName}|effective|${cleanEffectiveDate}`;
+};
 // =========================
 // ค่าเบี้ยประกันตามแผน
 // =========================
@@ -133,6 +217,175 @@ const getEmployeeFullName = (employee: Employee) => {
     .replace(/\s+/g, " ")
     .trim();
 };
+// =========================
+// สร้าง Map สรุป Claims
+// =========================
+const getClaimSummaryMap = (
+  claims: Claim[]
+) => {
+
+  const claimMap = new Map<
+    string,
+    {
+      opd: number;
+      ipd: number;
+      count: number;
+    }
+  >();
+
+  claims.forEach((claim) => {
+    if (
+  String(claim.relationship ?? "")
+    .trim()
+    .toUpperCase() !== "E"
+) {
+  return;
+}
+
+const idCard = String(
+  claim.id_card ?? ""
+)
+  .trim()
+  .replace(/\D/g, "");
+
+if (!idCard) return;
+
+const current =
+  claimMap.get(idCard) ?? {
+        opd: 0,
+        ipd: 0,
+        count: 0,
+      };
+
+    const claimType = String(
+      claim.claim_type ?? ""
+    )
+      .trim()
+      .toUpperCase();
+
+    const paid = Number(
+      claim.insurance_paid ?? 0
+    );
+
+    // OPD
+    if (
+      claimType.includes("OPD") ||
+      claimType.includes("ผู้ป่วยนอก")
+    ) {
+      current.opd += paid;
+    }
+
+    // IPD
+    if (
+      claimType.includes("IPD") ||
+      claimType.includes("ผู้ป่วยใน")
+    ) {
+      current.ipd += paid;
+    }
+
+    // จำนวนรายการเคลม
+    current.count += 1;
+
+    claimMap.set(
+  idCard,
+  current
+);
+
+  });
+
+  console.log(
+    "Claim Summary Map:",
+    Array.from(claimMap.entries()).slice(0, 20)
+  );
+
+  return claimMap;
+};
+// =========================
+// โหลดพนักงานทั้งหมดจาก Supabase
+// =========================
+const loadAllEmployees = async () => {
+  const allEmployees: Employee[] = [];
+
+  const pageSize = 1000;
+
+  let from = 0;
+  let to = pageSize - 1;
+
+  while (true) {
+    const {
+      data,
+      error,
+    } = await supabase
+      .from("employees")
+      .select("*")
+      .order("id", {
+        ascending: true,
+      })
+      .range(from, to);
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data || data.length === 0) {
+      break;
+    }
+
+    allEmployees.push(...data);
+
+    if (data.length < pageSize) {
+      break;
+    }
+
+    from += pageSize;
+    to += pageSize;
+  }
+
+  return allEmployees;
+};
+// =========================
+// โหลด Claims ทั้งหมดจาก Supabase
+// =========================
+const loadAllClaims = async () => {
+  const allClaims: Claim[] = [];
+
+  const pageSize = 1000;
+
+  let from = 0;
+  let to = pageSize - 1;
+
+  while (true) {
+    const {
+      data,
+      error,
+    } = await supabase
+      .from("claims")
+      .select("*")
+      .order("id", {
+        ascending: true,
+      })
+      .range(from, to);
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data || data.length === 0) {
+      break;
+    }
+
+    allClaims.push(...data);
+
+    if (data.length < pageSize) {
+      break;
+    }
+
+    from += pageSize;
+    to += pageSize;
+  }
+
+  return allClaims;
+};
 
 export default function Home() {
   const [fileName, setFileName] = useState("");
@@ -140,6 +393,146 @@ export default function Home() {
   const [error, setError] = useState("");
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [claims, setClaims] = useState<Claim[]>([]);
+  // =========================
+// สรุป Claims แบบรวดเร็ว
+// =========================
+const claimSummaryMap = useMemo(() => {
+
+  return getClaimSummaryMap(
+    claims
+  );
+
+}, [claims]);
+const matchStats = useMemo(() => {
+  if (claims.length === 0) {
+    return {
+      total: 0,
+      matched: 0,
+      unmatched: 0,
+      employeeClaims: 0,
+      dependentClaims: 0,
+    };
+  }
+
+  const employeeIdCardSet = new Set(
+    employees
+      .map((employee) =>
+        String(employee.id_card ?? "")
+          .trim()
+          .replace(/\D/g, "")
+      )
+      .filter(Boolean)
+  );
+
+  let matched = 0;
+  let unmatched = 0;
+  let employeeClaims = 0;
+  let dependentClaims = 0;
+
+  claims.forEach((claim) => {
+    const relationship = String(
+      claim.relationship ?? ""
+    )
+      .trim()
+      .toUpperCase();
+
+    const claimIdCard = String(
+      claim.id_card ?? ""
+    )
+      .trim()
+      .replace(/\D/g, "");
+
+    // พนักงาน
+    if (relationship === "E") {
+      employeeClaims++;
+
+      if (
+        claimIdCard &&
+        employeeIdCardSet.has(claimIdCard)
+      ) {
+        matched++;
+      } else {
+        unmatched++;
+      }
+    } else {
+      // คู่สมรส / บุตร / บุคคลอื่น
+      dependentClaims++;
+    }
+  });
+
+  return {
+    total: claims.length,
+    matched,
+    unmatched,
+    employeeClaims,
+    dependentClaims,
+  };
+}, [claims, employees]);
+const matchedEmployeeCount = useMemo(() => {
+
+  return employees.filter((employee) => {
+
+    const employeeIdCard = String(
+      employee.id_card ?? ""
+    )
+      .trim()
+      .replace(/\D/g, "");
+
+    if (!employeeIdCard) {
+      return false;
+    }
+
+    return claimSummaryMap.has(employeeIdCard);
+
+  }).length;
+
+}, [employees, claimSummaryMap]);
+useEffect(() => {
+  if (employees.length === 0 || claims.length === 0) return;
+
+const employeeIdCardSet = new Set(
+  employees
+    .map((employee) =>
+      String(employee.id_card ?? "")
+        .trim()
+        .replace(/\D/g, "")
+    )
+    .filter(Boolean)
+);
+
+const unmatchedClaims = claims.filter((claim) => {
+
+  const claimIdCard = String(
+    claim.id_card ?? ""
+  )
+    .trim()
+    .replace(/\D/g, "");
+
+  return (
+    claimIdCard === "" ||
+    !employeeIdCardSet.has(claimIdCard)
+  );
+});
+
+  console.log("========== ตรวจสอบ Claims ==========");
+  console.log("Claims ทั้งหมด:", claims.length);
+  console.log("Match ไม่ได้:", unmatchedClaims.length);
+
+console.log(
+  "Claims ที่ Match ไม่ได้ทั้งหมด:",
+  unmatchedClaims.map((claim, index) => ({
+    ลำดับ: index + 1,
+    ชื่อในไฟล์เคลม: claim.employee_name,
+    บัตรประชาชนในไฟล์เคลม: claim.id_card,
+    ความสัมพันธ์: claim.relationship,
+    ประเภทเคลม: claim.claim_type,
+    สังกัด: claim.affiliation,
+    เลขที่เคลม: claim.claim_no,
+  }))
+);
+
+  console.log("====================================");
+}, [employees, claims]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -151,52 +544,24 @@ export default function Home() {
   const [isClaimImporting, setIsClaimImporting] = useState(false);
 
   const [successMessage, setSuccessMessage] = useState("");
-    // =========================
-  // สรุปข้อมูลการเคลมของพนักงาน
   // =========================
-  const getClaimSummary = (employee: Employee) => {
-    const employeeFullName = getEmployeeFullName(employee);
+// แจ้งเข้า
+// =========================
+const [inFileName, setInFileName] = useState("");
+const [inRowCount, setInRowCount] = useState<number | null>(null);
+const [inPreview, setInPreview] = useState<Employee[]>([]);
+const [isInLoading, setIsInLoading] = useState(false);
+const [isInImporting, setIsInImporting] = useState(false);
 
-    const employeeClaims = claims.filter(
-      (claim) =>
-        claim.employee_name
-          .trim()
-          .replace(/\s+/g, " ")
-          .toLowerCase() ===
-        employeeFullName
-          .trim()
-          .replace(/\s+/g, " ")
-          .toLowerCase()
-    );
+// =========================
+// แจ้งออก
+// =========================
+const [outFileName, setOutFileName] = useState("");
+const [outRowCount, setOutRowCount] = useState<number | null>(null);
+const [outPreview, setOutPreview] = useState<any[]>([]);
+const [isOutLoading, setIsOutLoading] = useState(false);
+const [isOutImporting, setIsOutImporting] = useState(false);
 
-    const opdClaims = employeeClaims.filter(
-      (claim) =>
-        claim.claim_type.trim().toUpperCase() === "OPD"
-    );
-
-    const ipdClaims = employeeClaims.filter(
-      (claim) =>
-        claim.claim_type.trim().toUpperCase() === "IPD"
-    );
-
-    const opd = opdClaims.reduce(
-      (sum, claim) =>
-        sum + Number(claim.insurance_paid || 0),
-      0
-    );
-
-    const ipd = ipdClaims.reduce(
-      (sum, claim) =>
-        sum + Number(claim.insurance_paid || 0),
-      0
-    );
-
-    return {
-      opd,
-      ipd,
-      count: employeeClaims.length,
-    };
-  };
       // =========================
   // โหลดข้อมูลพนักงานจาก Supabase
   // =========================
@@ -208,52 +573,56 @@ useEffect(() => {
     // ==========================================
     // โหลด Employees
     // ==========================================
-    const {
-      data: employeeData,
-      error: employeeError,
-    } = await supabase
-      .from("employees")
-      .select("*")
-      .order("id", { ascending: true });
+    try {
 
-    if (employeeError) {
-      console.error(
-        "Supabase Employee Error:",
-        employeeError
-      );
+  const employeeData =
+    await loadAllEmployees();
 
-      setError(
-        `ไม่สามารถโหลดข้อมูลพนักงานได้: ${employeeError.message}`
-      );
-    } else {
-      setEmployees(employeeData ?? []);
-      setRowCount(employeeData?.length ?? 0);
-    }
+  setEmployees(employeeData);
 
-    // ==========================================
-    // โหลด Claims แยกออกจาก Employees
-    // ==========================================
-    const {
-      data: claimData,
-      error: claimError,
-    } = await supabase
-      .from("claims")
-      .select("*");
+  setRowCount(employeeData.length);
 
-    if (claimError) {
-      console.error(
-        "Supabase Claim Error:",
-        claimError
-      );
+} catch (employeeError) {
 
-      // ไม่ต้อง throw
-      // เพราะไม่ควรทำให้ข้อมูลพนักงานพังตาม
-      setClaims([]);
+  console.error(
+    "Supabase Employee Error:",
+    employeeError
+  );
 
-    } else {
-      setClaims(claimData ?? []);
-    }
+  setError(
+    `ไม่สามารถโหลดข้อมูลพนักงานได้: ${
+      employeeError instanceof Error
+        ? employeeError.message
+        : "เกิดข้อผิดพลาด"
+    }`
+  );
 
+}
+// ==========================================
+// โหลด Claims จาก Supabase
+// ==========================================
+try {
+
+  const claimData =
+    await loadAllClaims();
+
+  console.log(
+    "โหลด Claims สำเร็จ:",
+    claimData.length
+  );
+
+  setClaims(claimData);
+
+} catch (claimError) {
+
+  console.error(
+    "Supabase Claim Error:",
+    claimError
+  );
+
+  setClaims([]);
+
+}
     setIsLoading(false);
   };
 
@@ -326,64 +695,89 @@ useEffect(() => {
         // ---------------------------------
         // แปลงข้อมูล Excel → Employee
         // ---------------------------------
-        const mappedEmployees: Employee[] = dataRows
-        .filter((row) => {
-        const employeeCode = String(row[3] ?? "").trim();
+const mappedEmployees: Employee[] = dataRows
+  .filter((row) => {
+    const firstName = String(row[5] ?? "").trim();
+    const lastName = String(row[6] ?? "").trim();
 
-        // ต้องมีรหัสพนักงานจริง
-        return (
-          employeeCode !== "" &&
-          employeeCode.toLowerCase() !== "employee id" &&
-          employeeCode.toLowerCase() !== "employee code" &&
-          employeeCode.toLowerCase() !== "no."
-        );
-      })
-          .map((row) => ({
-            employee_code: String(row[3] ?? "").trim(),
+    return (
+      firstName !== "" &&
+      lastName !== ""
+    );
+  })
+  .map((row) => {
 
-            vendor: String(row[1] ?? "").trim(),
+    const vendor = String(row[1] ?? "").trim();
 
-            branch: String(row[2] ?? "").trim(),
+    const employeeCode = String(row[3] ?? "")
+      .trim()
+      .replace(/\s+/g, "")
+      .toUpperCase();
 
-            title: String(row[4] ?? "").trim(),
+    const firstName = String(row[5] ?? "").trim();
 
-            first_name: String(row[5] ?? "").trim(),
+    const lastName = String(row[6] ?? "").trim();
 
-            last_name: String(row[6] ?? "").trim(),
+    const idCard = String(row[9] ?? "").trim();
 
-            gender: String(row[7] ?? "").trim(),
+    return {
+      employee_key: createEmployeeKey(
+  vendor,
+  employeeCode,
+  firstName,
+  lastName,
+  idCard,
+  formatExcelDate(row[11])
+),
 
-            date_of_birth: formatExcelDate(row[8]),
+      employee_code: employeeCode,
 
-            id_card: String(row[9] ?? "").trim(),
+      vendor,
 
-            employment_date: formatExcelDate(row[10]),
+      branch: String(row[2] ?? "").trim(),
 
-            effective_date: formatExcelDate(row[11]),
+      title: String(row[4] ?? "").trim(),
 
-            plan: row[12] !== "" ? Number(row[12]) : null,
+      first_name: firstName,
 
-            // ค่าเริ่มต้น
-            insurance_type: "เต็มปี",
+      last_name: lastName,
 
-            department: String(row[13] ?? "").trim(),
+      gender: String(row[7] ?? "").trim(),
 
-            bank_account: String(row[14] ?? "").trim(),
+      date_of_birth: formatExcelDate(row[8]),
 
-            bank_name: String(row[15] ?? "").trim(),
+      id_card: idCard,
 
-            phone: String(row[16] ?? "").trim(),
+      employment_date: formatExcelDate(row[10]),
 
-            remark: String(row[17] ?? "").trim(),
+      effective_date: formatExcelDate(row[11]),
 
-            resignation_date: formatExcelDate(row[19]),
+      plan:
+        row[12] !== ""
+          ? Number(row[12])
+          : null,
 
-          status:
-          String(row[18] ?? "").trim() !== ""
-            ? "ลาออก"
-            : "มีผลประกัน",
-          }));
+      insurance_type: "เต็มปี",
 
+      department: String(row[13] ?? "").trim(),
+
+      bank_account: String(row[14] ?? "").trim(),
+
+      bank_name: String(row[15] ?? "").trim(),
+
+      phone: String(row[16] ?? "").trim(),
+
+      remark: String(row[17] ?? "").trim(),
+
+      resignation_date:
+        formatExcelDate(row[19]),
+
+      status:
+        String(row[18] ?? "").trim() !== ""
+          ? "ลาออก"
+          : "มีผลประกัน",
+    };
+  });
         console.log("ข้อมูลหลัง Mapping:", mappedEmployees);
 
         setEmployees(mappedEmployees);
@@ -409,9 +803,905 @@ useEffect(() => {
 
     reader.readAsArrayBuffer(file);
   };
-    // =========================
-  // บันทึกข้อมูลลง Supabase
   // =========================
+// อ่านไฟล์ Excel "แจ้งเข้า"
+// =========================
+const handleInFileUpload = (
+  event: React.ChangeEvent<HTMLInputElement>
+) => {
+  const file = event.target.files?.[0];
+
+  if (!file) return;
+
+  setInFileName(file.name);
+  setInRowCount(null);
+  setInPreview([]);
+  setError("");
+  setSuccessMessage("");
+  setIsInLoading(true);
+
+  const reader = new FileReader();
+
+  reader.onload = (e) => {
+    try {
+      const data = e.target?.result;
+
+      if (!data) {
+        throw new Error("ไม่พบข้อมูลไฟล์แจ้งเข้า");
+      }
+
+      const workbook = XLSX.read(data, {
+        type: "array",
+        cellDates: true,
+      });
+
+      const firstSheetName =
+        workbook.SheetNames[0];
+
+      const worksheet =
+        workbook.Sheets[firstSheetName];
+
+      const rows =
+        XLSX.utils.sheet_to_json<any[]>(
+          worksheet,
+          {
+            header: 1,
+            defval: "",
+          }
+        );
+
+      console.log(
+        "========== แจ้งเข้า =========="
+      );
+
+      console.log(
+        "ข้อมูลทั้งหมด:",
+        rows
+      );
+
+      if (rows.length < 3) {
+        throw new Error(
+          "ไฟล์แจ้งเข้าไม่มีข้อมูล หรือรูปแบบไฟล์ไม่ถูกต้อง"
+        );
+      }
+
+      // ==========================================
+      // ไฟล์แจ้งเข้ามี Header 2 แถว
+      //
+      // แถวที่ 1 = ภาษาไทย
+      // แถวที่ 2 = ภาษาอังกฤษ
+      // แถวที่ 3 เป็นต้นไป = ข้อมูล
+      // ==========================================
+      const dataRows =
+        rows.slice(2);
+
+      // ==========================================
+      // Mapping Excel → Employee
+      // ==========================================
+      const mappedEmployees: Employee[] =
+        dataRows
+          .filter((row) => {
+
+            const employeeCode =
+              String(row[2] ?? "")
+                .trim();
+
+            const firstName =
+              String(row[4] ?? "")
+                .trim();
+
+            const lastName =
+              String(row[5] ?? "")
+                .trim();
+
+            return (
+              employeeCode !== "" ||
+              (
+                firstName !== "" &&
+                lastName !== ""
+              )
+            );
+          })
+          .map((row) => {
+
+            const vendor =
+              String(row[1] ?? "")
+                .trim();
+
+            const employeeCode =
+              String(row[2] ?? "")
+                .trim()
+                .replace(/\s+/g, "")
+                .toUpperCase();
+
+            const firstName =
+              String(row[4] ?? "")
+                .trim();
+
+            const lastName =
+              String(row[5] ?? "")
+                .trim();
+
+            const idCard =
+              String(row[8] ?? "")
+                .trim()
+                .replace(/\D/g, "");
+
+            const effectiveDate =
+              formatExcelDate(row[10]);
+
+            return {
+
+              employee_key:
+                createEmployeeKey(
+                  vendor,
+                  employeeCode,
+                  firstName,
+                  lastName,
+                  idCard,
+                  effectiveDate
+                ),
+
+              employee_code:
+                employeeCode,
+
+              vendor:
+                vendor,
+
+              branch:
+                vendor,
+
+              title:
+                String(row[3] ?? "")
+                  .trim(),
+
+              first_name:
+                firstName,
+
+              last_name:
+                lastName,
+
+              gender:
+                String(row[6] ?? "")
+                  .trim(),
+
+              date_of_birth:
+                formatExcelDate(row[7]),
+
+              id_card:
+                idCard,
+
+              employment_date:
+                formatExcelDate(row[9]),
+
+              effective_date:
+                effectiveDate,
+
+              plan:
+                row[11] !== ""
+                  ? Number(row[11])
+                  : null,
+
+              insurance_type:
+                "เต็มปี",
+
+              department:
+                String(row[12] ?? "")
+                  .trim(),
+
+              bank_account:
+                String(row[13] ?? "")
+                  .trim(),
+
+              bank_name:
+                String(row[14] ?? "")
+                  .trim(),
+
+              phone:
+                String(row[15] ?? "")
+                  .trim(),
+
+              remark:
+                String(row[16] ?? "")
+                  .trim(),
+
+              resignation_date:
+                null,
+
+              status:
+                "มีผลประกัน",
+            };
+          });
+
+      console.log(
+        "ข้อมูลแจ้งเข้าหลัง Mapping:",
+        mappedEmployees
+      );
+
+      setInPreview(
+        mappedEmployees
+      );
+
+      setInRowCount(
+        mappedEmployees.length
+      );
+
+    } catch (err) {
+
+      console.error(err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "ไม่สามารถอ่านไฟล์แจ้งเข้าได้"
+      );
+
+    } finally {
+
+      setIsInLoading(false);
+
+    }
+  };
+
+  reader.onerror = () => {
+
+    setError(
+      "เกิดข้อผิดพลาดในการอ่านไฟล์แจ้งเข้า"
+    );
+
+    setIsInLoading(false);
+
+  };
+
+  reader.readAsArrayBuffer(file);
+};
+// =========================
+// ตรวจสอบข้อมูล "แจ้งเข้า" กับฐานข้อมูล
+// =========================
+const checkInEmployees = () => {
+  if (inPreview.length === 0) {
+    setError("ยังไม่มีข้อมูลแจ้งเข้าสำหรับตรวจสอบ");
+    return;
+  }
+
+  // ==========================================
+  // สร้าง Set ของ employee_key ที่มีอยู่ในระบบ
+  // ==========================================
+  const existingEmployeeKeys = new Set(
+    employees
+      .map((employee) => employee.employee_key)
+      .filter(Boolean)
+  );
+
+  // ==========================================
+  // แยกพนักงานใหม่ / พนักงานที่มีอยู่แล้ว
+  // ==========================================
+  const newEmployees: Employee[] = [];
+  const existingEmployees: Employee[] = [];
+
+  inPreview.forEach((employee) => {
+    const key = employee.employee_key;
+
+    if (
+      key &&
+      existingEmployeeKeys.has(key)
+    ) {
+      existingEmployees.push(employee);
+    } else {
+      newEmployees.push(employee);
+    }
+  });
+
+  // ==========================================
+  // Debug
+  // ==========================================
+  console.log(
+    "========== ตรวจสอบแจ้งเข้า =========="
+  );
+
+  console.log(
+    "ข้อมูลแจ้งเข้าทั้งหมด:",
+    inPreview.length
+  );
+
+  console.log(
+    "มีอยู่ในฐานข้อมูลแล้ว:",
+    existingEmployees.length
+  );
+
+  console.log(
+    "เป็นพนักงานใหม่:",
+    newEmployees.length
+  );
+
+  console.log(
+    "พนักงานใหม่:",
+    newEmployees
+  );
+
+  console.log(
+    "พนักงานที่มีอยู่แล้ว:",
+    existingEmployees
+  );
+
+  console.log(
+    "===================================="
+  );
+
+  // ==========================================
+  // เก็บเฉพาะพนักงานใหม่ไว้ใน Preview
+  // ==========================================
+  setInPreview(newEmployees);
+
+  setInRowCount(newEmployees.length);
+
+  setSuccessMessage(
+    `ตรวจสอบแจ้งเข้าสำเร็จ พบพนักงานใหม่ ${newEmployees.length} รายการ และมีอยู่ในระบบแล้ว ${existingEmployees.length} รายการ`
+  );
+};
+// =========================
+// บันทึก "แจ้งเข้า"
+// เพิ่มเฉพาะพนักงานใหม่
+// =========================
+const handleImportInToSupabase = async () => {
+
+  if (inPreview.length === 0) {
+    setError(
+      "ยังไม่มีข้อมูลสำหรับนำเข้า"
+    );
+    return;
+  }
+
+  setIsInImporting(true);
+  setError("");
+  setSuccessMessage("");
+
+  try {
+
+    // ==========================================
+    // โหลดข้อมูลล่าสุดจาก Supabase
+    // ==========================================
+    const currentEmployees =
+      await loadAllEmployees();
+
+    // ==========================================
+    // สร้าง Set รหัสพนักงานที่มีอยู่แล้ว
+    // ==========================================
+    const existingEmployeeCodes =
+      new Set(
+        currentEmployees
+          .map((employee) =>
+            String(
+              employee.employee_code ?? ""
+            )
+              .trim()
+              .replace(/\s+/g, "")
+              .toUpperCase()
+          )
+          .filter(Boolean)
+      );
+
+    // ==========================================
+    // เอาเฉพาะคนใหม่
+    // ==========================================
+    const newEmployees =
+      inPreview.filter((employee) => {
+
+        const code =
+          String(
+            employee.employee_code ?? ""
+          )
+            .trim()
+            .replace(/\s+/g, "")
+            .toUpperCase();
+
+        return (
+          code !== "" &&
+          !existingEmployeeCodes.has(code)
+        );
+      });
+
+    const duplicateCount =
+      inPreview.length -
+      newEmployees.length;
+
+      console.log("========== DEBUG แจ้งเข้า ==========");
+      console.log("จำนวนข้อมูลในไฟล์:", inPreview.length);
+      console.log("จำนวนพนักงานใหม่:", newEmployees.length);
+      console.log("จำนวนพนักงานซ้ำ:", duplicateCount);
+      console.log(
+        "ตัวอย่างข้อมูลแจ้งเข้า:",
+        inPreview.slice(0, 3)
+);
+console.log("====================================");
+
+
+    // ==========================================
+    // ไม่มีคนใหม่
+    // ==========================================
+    if (newEmployees.length === 0) {
+
+      setSuccessMessage(
+        `ไม่พบพนักงานใหม่ ข้อมูล ${inPreview.length.toLocaleString()} รายการมีอยู่ในระบบแล้ว`
+      );
+
+      setInPreview([]);
+      setInRowCount(null);
+
+      return;
+    }
+
+    // ==========================================
+    // Insert เฉพาะคนใหม่
+    // ==========================================
+    const chunkSize = 500;
+
+    let totalImported = 0;
+
+    for (
+      let i = 0;
+      i < newEmployees.length;
+      i += chunkSize
+    ) {
+
+      const chunk =
+        newEmployees.slice(
+          i,
+          i + chunkSize
+        );
+
+      const {
+        error,
+      } = await supabase
+        .from("employees")
+        .insert(chunk);
+
+      if (error) {
+
+        console.error(
+          "Supabase แจ้งเข้า Error:",
+          error
+        );
+
+        throw new Error(
+          `บันทึกแจ้งเข้าไม่สำเร็จ: ${error.message}`
+        );
+      }
+
+      totalImported +=
+        chunk.length;
+    }
+
+    // ==========================================
+    // โหลดข้อมูลใหม่
+    // ==========================================
+    const latestEmployees =
+      await loadAllEmployees();
+
+    setEmployees(
+      latestEmployees
+    );
+
+    setRowCount(
+      latestEmployees.length
+    );
+
+    // ==========================================
+    // แจ้งผล
+    // ==========================================
+    setSuccessMessage(
+      `แจ้งเข้าสำเร็จ เพิ่มพนักงานใหม่ ${totalImported.toLocaleString()} รายการ | ข้อมูลซ้ำ ${duplicateCount.toLocaleString()} รายการ`
+    );
+
+    setInPreview([]);
+    setInRowCount(null);
+
+  } catch (err) {
+
+    console.error(
+      "Import แจ้งเข้า Error:",
+      err
+    );
+
+    setError(
+      err instanceof Error
+        ? err.message
+        : "ไม่สามารถบันทึกข้อมูลแจ้งเข้าได้"
+    );
+
+  } finally {
+
+    setIsInImporting(false);
+
+  }
+};
+// =========================
+// อ่านไฟล์ Excel "แจ้งออก"
+// =========================
+const handleOutFileUpload = (
+  event: React.ChangeEvent<HTMLInputElement>
+) => {
+
+  const file =
+    event.target.files?.[0];
+
+  if (!file) return;
+
+  setOutFileName(
+    file.name
+  );
+
+  setOutRowCount(null);
+  setOutPreview([]);
+
+  setError("");
+  setSuccessMessage("");
+
+  setIsOutLoading(true);
+
+  const reader =
+    new FileReader();
+
+  reader.onload = (e) => {
+
+    try {
+
+      const data =
+        e.target?.result;
+
+      if (!data) {
+        throw new Error(
+          "ไม่พบข้อมูลไฟล์แจ้งออก"
+        );
+      }
+
+      const workbook =
+        XLSX.read(data, {
+          type: "array",
+          cellDates: true,
+        });
+
+      const worksheet =
+        workbook.Sheets[
+          workbook.SheetNames[0]
+        ];
+
+      const rows =
+        XLSX.utils.sheet_to_json<any[]>(
+          worksheet,
+          {
+            header: 1,
+            defval: "",
+          }
+        );
+
+      console.log(
+        "========== แจ้งออก =========="
+      );
+
+      console.log(
+        "ข้อมูลทั้งหมด:",
+        rows
+      );
+
+      if (rows.length < 3) {
+
+        throw new Error(
+          "ไฟล์แจ้งออกไม่มีข้อมูล หรือรูปแบบไฟล์ไม่ถูกต้อง"
+        );
+
+      }
+
+      // ==========================================
+      // Header 2 แถว
+      // ข้อมูลเริ่มแถวที่ 3
+      // ==========================================
+      const dataRows =
+        rows.slice(2);
+
+      const mappedRows =
+        dataRows
+          .filter((row) => {
+
+            const employeeCode =
+              String(row[1] ?? "")
+                .trim();
+
+            return (
+              employeeCode !== ""
+            );
+
+          })
+          .map((row) => {
+
+            return {
+
+              employee_code:
+                String(row[1] ?? "")
+                  .trim()
+                  .replace(/\s+/g, "")
+                  .toUpperCase(),
+
+              title:
+                String(row[2] ?? "")
+                  .trim(),
+
+              first_name:
+                String(row[3] ?? "")
+                  .trim(),
+
+              last_name:
+                String(row[4] ?? "")
+                  .trim(),
+
+              resignation_date:
+                formatExcelDate(
+                  row[5]
+                ),
+
+              plan:
+                row[6] !== ""
+                  ? Number(row[6])
+                  : null,
+
+              remark:
+                String(row[7] ?? "")
+                  .trim(),
+
+            };
+
+          });
+
+      console.log(
+        "ข้อมูลแจ้งออกหลัง Mapping:",
+        mappedRows
+      );
+
+      setOutPreview(
+        mappedRows
+      );
+
+      setOutRowCount(
+        mappedRows.length
+      );
+
+    } catch (err) {
+
+      console.error(err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "ไม่สามารถอ่านไฟล์แจ้งออกได้"
+      );
+
+    } finally {
+
+      setIsOutLoading(false);
+
+    }
+
+  };
+
+  reader.onerror = () => {
+
+    setError(
+      "เกิดข้อผิดพลาดในการอ่านไฟล์แจ้งออก"
+    );
+
+    setIsOutLoading(false);
+
+  };
+
+  reader.readAsArrayBuffer(file);
+};
+// =========================
+// บันทึก "แจ้งออก"
+// เปลี่ยนสถานะ ไม่ลบข้อมูล
+// =========================
+const handleImportOutToSupabase =
+  async () => {
+
+    if (outPreview.length === 0) {
+
+      setError(
+        "ยังไม่มีข้อมูลแจ้งออกสำหรับดำเนินการ"
+      );
+
+      return;
+    }
+
+    setIsOutImporting(true);
+
+    setError("");
+    setSuccessMessage("");
+
+    try {
+
+      // ==========================================
+      // โหลดข้อมูลล่าสุดจาก Supabase
+      // ==========================================
+      const currentEmployees =
+        await loadAllEmployees();
+
+      // ==========================================
+      // สร้าง Map จาก employee_code
+      // ==========================================
+      const employeeMap =
+        new Map<string, Employee>();
+
+      currentEmployees.forEach(
+        (employee) => {
+
+          const code =
+            String(
+              employee.employee_code ?? ""
+            )
+              .trim()
+              .replace(/\s+/g, "")
+              .toUpperCase();
+
+          if (code) {
+
+            employeeMap.set(
+              code,
+              employee
+            );
+
+          }
+
+        }
+      );
+
+      let updatedCount = 0;
+
+      let notFoundCount = 0;
+
+      const notFoundEmployees:
+        string[] = [];
+
+      // ==========================================
+      // วนข้อมูลแจ้งออก
+      // ==========================================
+      for (
+        const row of outPreview
+      ) {
+
+        const employeeCode =
+          String(
+            row.employee_code ?? ""
+          )
+            .trim()
+            .replace(/\s+/g, "")
+            .toUpperCase();
+
+        // หา employee
+        const employee =
+          employeeMap.get(
+            employeeCode
+          );
+
+        // ========================================
+        // ถ้าไม่พบรหัส
+        // ========================================
+        if (!employee) {
+
+          notFoundCount++;
+
+          notFoundEmployees.push(
+            `${employeeCode} | ${row.title ?? ""}${row.first_name ?? ""} ${row.last_name ?? ""}`
+          );
+
+          continue;
+        }
+
+        // ========================================
+        // UPDATE คนเดิม
+        // ไม่ DELETE
+        // ========================================
+        const {
+          error,
+        } = await supabase
+          .from("employees")
+          .update({
+
+            status:
+              "ลาออก",
+
+            resignation_date:
+              row.resignation_date,
+
+            remark:
+              row.remark ||
+              employee.remark,
+
+          })
+          .eq(
+            "id",
+            employee.id
+          );
+
+        if (error) {
+
+          throw new Error(
+            `อัปเดตพนักงาน ${employeeCode} ไม่สำเร็จ: ${error.message}`
+          );
+
+        }
+
+        updatedCount++;
+
+      }
+
+      // ==========================================
+      // โหลดข้อมูลใหม่
+      // ==========================================
+      const latestEmployees =
+        await loadAllEmployees();
+
+      setEmployees(
+        latestEmployees
+      );
+
+      setRowCount(
+        latestEmployees.length
+      );
+
+      // ==========================================
+      // สรุปผล
+      // ==========================================
+      let message =
+        `แจ้งออกสำเร็จ ${updatedCount.toLocaleString()} รายการ`;
+
+      if (
+        notFoundCount > 0
+      ) {
+
+        message +=
+          ` | ไม่พบรหัสพนักงาน ${notFoundCount.toLocaleString()} รายการ`;
+
+      }
+
+      setSuccessMessage(
+        message
+      );
+
+      // ==========================================
+      // Debug คนที่หาไม่เจอ
+      // ==========================================
+      if (
+        notFoundEmployees.length > 0
+      ) {
+
+        console.warn(
+          "ไม่พบพนักงานจากไฟล์แจ้งออก:",
+          notFoundEmployees
+        );
+
+      }
+
+      setOutPreview([]);
+      setOutRowCount(null);
+
+    } catch (err) {
+
+      console.error(
+        "Import แจ้งออก Error:",
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "ไม่สามารถดำเนินการแจ้งออกได้"
+      );
+
+    } finally {
+
+      setIsOutImporting(false);
+
+    }
+  };
   // =========================
 // อ่านไฟล์ Excel รายงานเคลม
 // =========================
@@ -459,85 +1749,125 @@ const handleClaimFileUpload = (
           "ไฟล์รายงานเคลมไม่มีข้อมูล หรือรูปแบบไฟล์ไม่ถูกต้อง"
         );
       }
+      console.log("========== CLAIM ROW DEBUG ==========");
 
-      // ==================================================
-      // รายงานเคลม:
-      //
-      // 0 Policy Name
-      // 1 เลขที่อ้างอิง
-      // 2 สถานะ
-      // 3 ความสัมพันธ์
-      // 4 ชื่อ-สกุล
-      // 5 แผน
-      // 6 ประเภท
-      // 7 วันเข้า รพ.
-      // 8 ใบเสร็จ
-      // 9 บริษัทฯจ่าย
-      // 10 สถานพยาบาล
-      // 11 ประเภทการจ่าย
-      // 12 เลขที่รับเรื่อง
-      // 13 สังกัด
-      //
-      // ==================================================
+console.log(
+  rows[1].map((value: any, index: number) => ({
+    column: index,
+    value: value,
+  }))
+);
+
+console.log("====================================");
+
+// ==================================================
+// Mapping รายงานเคลม
+//
+// 0  = Policy Name
+// 1  = เลขที่อ้างอิง
+// 2  = สถานะ
+// 3  = ความสัมพันธ์
+// 4  = ชื่อ-สกุล
+// 5  = ช่องข้อมูลอื่น
+// 6  = ช่องข้อมูลอื่น
+// 7  = ช่องข้อมูลอื่น
+// 8  = ช่องข้อมูลอื่น
+// 9  = ประเภทการเคลม
+// 10 = วันเข้า รพ.
+// 11 = ใบเสร็จ
+// 12 = บริษัทฯจ่าย
+// 13 = สถานพยาบาล
+// 14 = ประเภทการจ่าย
+// 15 = เลขที่รับเรื่อง
+// 16 = สังกัด
+// 17 = เลขบัตรประชาชน
+//
+// ==================================================
 
       const dataRows = rows.slice(1);
 
       const mappedClaims: Claim[] = dataRows
-        .filter((row) => {
-          const employeeName = String(row[4] ?? "").trim();
+  .filter((row) => {
+    const employeeName = String(row[4] ?? "").trim();
 
-          return (
-            employeeName !== "" &&
-            employeeName !== "ชื่อ-สกุล" &&
-            employeeName !== "ชื่อผู้เอาประกันภัย"
-          );
-        })
-        .map((row) => ({
-          policy_name: String(row[0] ?? "").trim(),
+    return (
+      employeeName !== "" &&
+      employeeName !== "ชื่อ-สกุล" &&
+      employeeName !== "ชื่อผู้เอาประกันภัย"
+    );
+  })
+  .map((row) => ({
+    policy_name: String(row[0] ?? "").trim(),
 
-          reference_no: String(row[1] ?? "").trim(),
+    reference_no: String(row[1] ?? "").trim(),
 
-          claim_status: String(row[2] ?? "").trim(),
+    claim_status: String(row[2] ?? "").trim(),
 
-          relationship: String(row[3] ?? "").trim(),
+    relationship: String(row[3] ?? "").trim(),
 
-          employee_name: String(row[4] ?? "").trim(),
+    employee_name: String(row[4] ?? "").trim(),
 
-          plan:
-            row[5] !== "" &&
-            row[5] !== null &&
-            row[5] !== undefined
-              ? Number(row[5])
-              : null,
+    // เลขบัตรประชาชน
+    // Excel คอลัมน์ R = index 17
+    id_card: String(row[17] ?? "")
+      .trim()
+      .replace(/\D/g, ""),
 
-          claim_type: String(row[6] ?? "").trim(),
+    // ตอนนี้ยังไม่ใช้แผนจากไฟล์เคลม
+    plan: null,
 
-          hospital_date: formatExcelDate(row[7]),
+    // ประเภทการเคลม
+    claim_type: String(row[9] ?? "").trim(),
 
-          receipt_amount:
-            row[8] !== "" &&
-            row[8] !== null &&
-            row[8] !== undefined
-              ? Number(row[8])
-              : 0,
+    // วันเข้าโรงพยาบาล
+    hospital_date: String(row[10] ?? "").trim(),
 
-          insurance_paid:
-            row[9] !== "" &&
-            row[9] !== null &&
-            row[9] !== undefined
-              ? Number(row[9])
-              : 0,
+    // จำนวนเงินตามใบเสร็จ
+    receipt_amount:
+      row[11] !== "" &&
+      row[11] !== null &&
+      row[11] !== undefined
+        ? Number(row[11])
+        : 0,
 
-          hospital_name: String(row[10] ?? "").trim(),
+    // จำนวนเงินที่บริษัทประกันจ่าย
+    insurance_paid:
+      row[12] !== "" &&
+      row[12] !== null &&
+      row[12] !== undefined
+        ? Number(row[12])
+        : 0,
 
-          payment_type: String(row[11] ?? "").trim(),
+    // สถานพยาบาล
+    hospital_name: String(row[13] ?? "").trim(),
 
-          claim_no: String(row[12] ?? "").trim(),
+    // ประเภทการจ่าย
+    payment_type: String(row[14] ?? "").trim(),
 
-          affiliation: String(row[13] ?? "").trim(),
-        }));
+    // เลขที่รับเรื่อง
+    claim_no: String(row[15] ?? "").trim(),
+
+    // สังกัด
+    affiliation: String(row[16] ?? "").trim(),
+  }));
 
       console.log("Claims หลัง Mapping:", mappedClaims);
+      console.log(
+  "========== CLAIM ID CARD DEBUG =========="
+);
+
+console.log(
+  mappedClaims.slice(0, 20).map((claim) => ({
+    ชื่อ: claim.employee_name,
+    ความสัมพันธ์: claim.relationship,
+    เลขบัตรประชาชน: claim.id_card,
+    จำนวนหลัก: claim.id_card.length,
+  }))
+);
+
+console.log(
+  "========================================="
+);
 
       setClaimPreview(mappedClaims);
       setClaimRowCount(mappedClaims.length);
@@ -554,6 +1884,7 @@ const handleClaimFileUpload = (
       setIsClaimLoading(false);
     }
   };
+  
 
   reader.onerror = () => {
     setError("เกิดข้อผิดพลาดในการอ่านไฟล์รายงานเคลม");
@@ -562,6 +1893,8 @@ const handleClaimFileUpload = (
 
   reader.readAsArrayBuffer(file);
 };
+
+
 // =========================
 // บันทึก Claims ลง Supabase
 // =========================
@@ -576,39 +1909,272 @@ const handleImportClaimsToSupabase = async () => {
   setSuccessMessage("");
 
   try {
-    const { data, error } = await supabase
-      .from("claims")
-      .insert(claimPreview)
-      .select();
+    const chunkSize = 500;
 
-    if (error) {
-      console.error("Supabase Claims Error:", error);
-      throw new Error(
-        `บันทึกข้อมูลเคลมไม่สำเร็จ: ${error.message}`
+    let totalImported = 0;
+
+    // ==========================================
+    // บันทึก Claims ทีละ 500 รายการ
+    // ==========================================
+    for (
+      let i = 0;
+      i < claimPreview.length;
+      i += chunkSize
+    ) {
+      const chunk = claimPreview.slice(
+        i,
+        i + chunkSize
       );
+
+      console.log(
+        `กำลังบันทึก Claim ${
+          i + 1
+        } - ${
+          i + chunk.length
+        } / ${
+          claimPreview.length
+        }`
+      );
+
+      const { error } = await supabase
+        .from("claims")
+        .insert(chunk);
+
+      if (error) {
+        console.error(
+          "Supabase Claims Error:",
+          error
+        );
+
+        throw new Error(
+          `บันทึกข้อมูลเคลมไม่สำเร็จ: ${error.message}`
+        );
+      }
+
+      totalImported += chunk.length;
     }
 
-    setClaims((prev) => [
-      ...prev,
-      ...(data ?? []),
-    ]);
+    // ==========================================
+    // โหลด Claims ใหม่ทั้งหมดจาก Supabase
+    // ==========================================
+    console.log(
+      "กำลังโหลด Claims ใหม่..."
+    );
+
+    const latestClaims =
+      await loadAllClaims();
+
+    console.log(
+      "Claims ตัวอย่าง 10 รายการ:",
+      latestClaims.slice(0, 10)
+    );
+    console.log(
+      "โหลด Claims ใหม่สำเร็จ:",
+      latestClaims.length
+    );
+console.log("========== DEBUG MATCH ==========");
+
+console.log(
+  "Employee ตัวอย่าง:",
+  employees.slice(0, 10).map((employee) => ({
+    ชื่อ: getEmployeeFullName(employee),
+    id_card: employee.id_card,
+    normalized_id_card: String(employee.id_card ?? "")
+      .trim()
+      .replace(/\D/g, ""),
+  }))
+);
+
+console.log(
+  "Claim ตัวอย่าง:",
+  latestClaims.slice(0, 10).map((claim) => ({
+    ชื่อ: claim.employee_name,
+    id_card: claim.id_card,
+    normalized_id_card: String(claim.id_card ?? "")
+      .trim()
+      .replace(/\D/g, ""),
+  }))
+);
+
+console.log("================================");
+    
+    setClaims(latestClaims);
+    // ==========================================
+// ตรวจสอบชื่อที่ Match ไม่ได้
+// ==========================================
+
+const employeeIdCardSet = new Set(
+  employees
+    .map((employee) =>
+      String(employee.id_card ?? "")
+        .trim()
+        .replace(/\D/g, "")
+    )
+    .filter(Boolean)
+);
+
+const unmatchedClaims = latestClaims.filter((claim) => {
+  // เอาเฉพาะพนักงาน
+  if (
+    String(claim.relationship ?? "")
+      .trim()
+      .toUpperCase() !== "E"
+  ) {
+    return false;
+  }
+
+  const claimIdCard = String(
+    claim.id_card ?? ""
+  )
+    .trim()
+    .replace(/\D/g, "");
+
+  return (
+    claimIdCard === "" ||
+    !employeeIdCardSet.has(claimIdCard)
+  );
+});
+// ==========================================
+// หา Employee ที่ชื่อใกล้เคียงกับ Claim
+// ==========================================
+
+const employeeNameList = employees.map(
+  (employee) => ({
+    original: getEmployeeFullName(employee),
+    normalized: normalizeName(
+      getEmployeeFullName(employee)
+    ),
+    vendor: employee.vendor,
+  })
+);
+
+const unmatchedWithSuggestions = unmatchedClaims
+  .map((claim) => {
+
+    const claimNormalized = normalizeName(
+      claim.employee_name
+    );
+
+    // หาชื่อที่มีส่วนของชื่อเหมือนกัน
+    const suggestions = employeeNameList
+      .filter((employee) => {
+
+        if (!claimNormalized) return false;
+
+        return (
+          employee.normalized.includes(
+            claimNormalized.slice(0, 5)
+          ) ||
+          claimNormalized.includes(
+            employee.normalized.slice(0, 5)
+          )
+        );
+      })
+      .slice(0, 5);
+
+    return {
+      claimName: claim.employee_name,
+      normalized: claimNormalized,
+      relationship: claim.relationship,
+      claimType: claim.claim_type,
+      suggestions,
+    };
+  });
+
+console.log(
+  "===================================="
+);
+
+console.log(
+  "ชื่อที่ Match ไม่ได้ พร้อมชื่อพนักงานที่ใกล้เคียง:"
+);
+
+console.table(
+  unmatchedWithSuggestions
+);
+
+console.log(
+  "===================================="
+);
+
+console.log(
+  "===================================="
+);
+
+console.log(
+  "จำนวน Claims ทั้งหมด:",
+  latestClaims.length
+);
+
+console.log(
+  "จำนวน Claims ที่ Match ไม่ได้:",
+  unmatchedClaims.length
+);
+
+console.log(
+  "รายชื่อ Claims ที่ Match ไม่ได้ทั้งหมด:",
+  unmatchedClaims.map(
+    (claim) => ({
+      original: claim.employee_name,
+      id_card: claim.id_card,
+      normalized: normalizeName(
+        claim.employee_name
+      ),
+      relationship: claim.relationship,
+      claimType: claim.claim_type,
+      affiliation: claim.affiliation,
+    })
+  )
+);
+
+console.log(
+  "===================================="
+);
+console.log(
+  "ตัวอย่าง Claims:",
+  latestClaims.slice(0, 20).map((claim) => ({
+    ชื่อ: claim.employee_name,
+    บัตรประชาชน: claim.id_card,
+    ความสัมพันธ์: claim.relationship,
+    แผน: claim.plan,
+    ประเภทเคลม: claim.claim_type,
+    จ่าย: claim.insurance_paid,
+  }))
+);
+console.log(
+  "ตัวอย่างชื่อจาก Employees:",
+  employees.slice(0, 20).map((employee) => ({
+    original: getEmployeeFullName(employee),
+    normalized: normalizeName(
+      getEmployeeFullName(employee)
+    ),
+  }))
+);
 
     setSuccessMessage(
-      `นำเข้ารายงานเคลมสำเร็จ ${claimPreview.length.toLocaleString()} รายการ`
+      `นำเข้ารายงานเคลมสำเร็จ ${totalImported.toLocaleString()} รายการ`
     );
 
     setClaimPreview([]);
 
+    setClaimRowCount(null);
+
   } catch (err) {
-    console.error("Import Claims Error:", err);
+    console.error(
+      "Import Claims Error:",
+      err
+    );
 
     setError(
       err instanceof Error
         ? err.message
         : "ไม่สามารถบันทึกรายงานเคลมได้"
     );
+
   } finally {
+
     setIsClaimImporting(false);
+
   }
 };
 const handleImportToSupabase = async () => {
@@ -622,49 +2188,120 @@ const handleImportToSupabase = async () => {
   setSuccessMessage("");
 
   try {
+
     // ==========================================
-    // 1. ทำความสะอาดข้อมูล
+    // 1. สร้าง employee_key ใหม่ให้ทุกคน
     // ==========================================
     const cleanedEmployees = employees
-      .map((employee) => ({
-        ...employee,
+  .map((employee) => {
+    const vendor = String(employee.vendor ?? "").trim();
 
-        employee_code: String(employee.employee_code ?? "")
-          .trim()
-          .replace(/\s+/g, "")
-          .toUpperCase(),
-      }))
-      .filter(
-        (employee) =>
-          employee.employee_code !== ""
-      );
+    const employeeCode = String(
+      employee.employee_code ?? ""
+    )
+      .trim()
+      .replace(/\s+/g, "")
+      .toUpperCase();
+
+    const firstName = String(
+      employee.first_name ?? ""
+    ).trim();
+
+    const lastName = String(
+      employee.last_name ?? ""
+    ).trim();
+
+    const idCard = String(
+      employee.id_card ?? ""
+    ).trim();
+
+    return {
+      ...employee,
+
+      employee_code: employeeCode,
+
+      employee_key: createEmployeeKey(
+  vendor,
+  employeeCode,
+  firstName,
+  lastName,
+  idCard,
+  employee.effective_date
+),
+    };
+  })
+  .filter(
+    (employee) =>
+      employee.employee_key !== ""
+  );
+
 
     // ==========================================
-    // 2. ตรวจสอบ duplicate employee_code
+    // 2. ตรวจสอบ duplicate employee_key
     // ==========================================
-    const employeeMap = new Map<
-      string,
-      Employee
-    >();
+    const employeeMap =
+      new Map<string, Employee>();
 
-    const duplicateCodes: string[] = [];
+    const duplicateKeys: string[] = [];
 
     for (const employee of cleanedEmployees) {
-      const code = employee.employee_code;
 
-      if (employeeMap.has(code)) {
-        duplicateCodes.push(code);
+      const key =
+        employee.employee_key;
+
+      if (employeeMap.has(key)) {
+        duplicateKeys.push(key);
       }
 
-      employeeMap.set(code, employee);
+      employeeMap.set(
+        key,
+        employee
+      );
     }
 
-    const uniqueEmployees =
-      Array.from(employeeMap.values());
 
     // ==========================================
-    // 3. แสดงข้อมูลใน Console
+    // 3. ถ้ามีชื่อซ้ำในบริษัทเดียวกัน
     // ==========================================
+    if (duplicateKeys.length > 0) {
+
+      const uniqueDuplicateKeys =
+        [...new Set(duplicateKeys)];
+
+    // ==========================================
+    // 3. ถ้ามีชื่อซ้ำในบริษัทเดียวกัน
+    // ==========================================
+const duplicateEmployees = uniqueDuplicateKeys.map((key) => {
+  const duplicateRows = cleanedEmployees.filter(
+    (employee) => employee.employee_key === key
+  );
+
+  return duplicateRows
+    .map(
+      (employee) =>
+        `${employee.vendor} | ${employee.employee_code} | ${employee.title}${employee.first_name} ${employee.last_name} | บัตรประชาชน: ${employee.id_card}`
+    )
+    .join(" / ");
+});
+
+throw new Error(
+  `พบข้อมูลซ้ำ ${uniqueDuplicateKeys.length} รายการ:\n\n${duplicateEmployees.join(
+    "\n"
+  )}`
+);
+
+    }
+
+
+    // ==========================================
+    // 4. ข้อมูลที่จะบันทึก
+    // ==========================================
+    const uniqueEmployees =
+      Array.from(
+        employeeMap.values()
+      );
+
+
     console.log(
       "================================="
     );
@@ -675,53 +2312,27 @@ const handleImportToSupabase = async () => {
     );
 
     console.log(
-      "หลัง Clean:",
+      "จำนวนหลัง Clean:",
       cleanedEmployees.length
     );
 
     console.log(
-      "หลังตัด Duplicate:",
+      "จำนวนที่จะบันทึก:",
       uniqueEmployees.length
-    );
-
-    console.log(
-      "Duplicate Codes:",
-      duplicateCodes
-    );
-
-    console.log(
-      "จำนวน Duplicate:",
-      duplicateCodes.length
     );
 
     console.log(
       "================================="
     );
 
-    // ==========================================
-    // 4. ถ้ามี Duplicate ให้หยุดก่อน
-    // ==========================================
-    if (duplicateCodes.length > 0) {
-
-      const uniqueDuplicateCodes =
-        [...new Set(duplicateCodes)];
-
-      console.error(
-        "พบ employee_code ซ้ำ:",
-        uniqueDuplicateCodes
-      );
-
-      throw new Error(
-        `พบรหัสพนักงานซ้ำในไฟล์ ${uniqueDuplicateCodes.length} รหัส เช่น ${uniqueDuplicateCodes.slice(0, 10).join(", ")}`
-      );
-    }
 
     // ==========================================
-    // 5. แบ่งข้อมูลเป็นชุดละ 500 รายการ
+    // 5. แบ่งข้อมูลเป็นชุดละ 500
     // ==========================================
     const chunkSize = 500;
 
     let totalImported = 0;
+
 
     for (
       let i = 0;
@@ -735,22 +2346,36 @@ const handleImportToSupabase = async () => {
           i + chunkSize
         );
 
+
       console.log(
-        `กำลังบันทึก ${i + 1} - ${
+        `กำลังบันทึก ${
+          i + 1
+        } - ${
           i + chunk.length
         } / ${
           uniqueEmployees.length
         }`
       );
 
-      const { error } =
-        await supabase
-          .from("employees")
-          .upsert(chunk, {
-            onConflict: "employee_code",
-          });
+
+      // ========================================
+      // ใช้ employee_key เป็นตัวหลัก
+      // ========================================
+      const {
+        error
+      } = await supabase
+        .from("employees")
+        .upsert(
+          chunk,
+          {
+            onConflict:
+              "employee_key",
+          }
+        );
+
 
       if (error) {
+
         console.error(
           "Supabase Error:",
           error
@@ -758,25 +2383,49 @@ const handleImportToSupabase = async () => {
 
         throw new Error(
           `บันทึกข้อมูลชุดที่ ${
-            Math.floor(i / chunkSize) + 1
-          } ไม่สำเร็จ: ${error.message}`
+            Math.floor(
+              i / chunkSize
+            ) + 1
+          } ไม่สำเร็จ: ${
+            error.message
+          }`
         );
       }
 
-      totalImported += chunk.length;
+
+      totalImported +=
+        chunk.length;
     }
 
+
     // ==========================================
-    // 6. สำเร็จ
+    // 6. โหลดข้อมูลใหม่จาก Database
+    // ==========================================
+try {
+
+  const latestEmployees =
+    await loadAllEmployees();
+
+  setEmployees(latestEmployees);
+
+  setRowCount(latestEmployees.length);
+
+} catch (reloadError) {
+
+  console.error(
+    "Reload Error:",
+    reloadError
+  );
+
+}
+
+    // ==========================================
+    // 7. สำเร็จ
     // ==========================================
     setSuccessMessage(
       `นำเข้าข้อมูลสำเร็จ ${totalImported.toLocaleString()} รายการ`
     );
 
-    console.log(
-      "นำเข้าสำเร็จ:",
-      totalImported
-    );
 
   } catch (err) {
 
@@ -792,7 +2441,9 @@ const handleImportToSupabase = async () => {
     );
 
   } finally {
+
     setIsImporting(false);
+
   }
 };
 
@@ -912,11 +2563,334 @@ const handleImportToSupabase = async () => {
           )}
 
         </div>
+        </div>
+
+
+{/* =========================
+    แจ้งเข้า
+========================= */}
+<div className="mb-8 rounded-2xl bg-white p-6 shadow-sm">
+
+  <h2 className="text-xl font-bold text-slate-900">
+    แจ้งเข้า
+  </h2>
+
+  <p className="mt-2 text-sm text-slate-500">
+    อัปโหลดรายชื่อพนักงานใหม่ ระบบจะเพิ่มเฉพาะพนักงานที่ยังไม่มีในฐานข้อมูล
+  </p>
+
+  <div className="mt-5">
+
+    <label
+      htmlFor="in-upload"
+      className="inline-flex cursor-pointer items-center rounded-xl bg-blue-600 px-5 py-3 font-medium text-white transition hover:bg-blue-700"
+    >
+      📂 เลือกไฟล์แจ้งเข้า
+    </label>
+
+    <input
+      id="in-upload"
+      type="file"
+      accept=".xlsx,.xls"
+      onChange={handleInFileUpload}
+      className="hidden"
+    />
+
+  </div>
+
+  {inFileName && (
+    <div className="mt-5 rounded-xl bg-slate-50 p-4">
+
+      <p className="text-sm text-slate-500">
+        ไฟล์ที่เลือก
+      </p>
+
+      <p className="mt-1 font-semibold text-slate-900">
+        {inFileName}
+      </p>
+
+      {isInLoading && (
+        <div className="mt-3 flex items-center gap-3 text-blue-600">
+
+          <span className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+
+          <span className="font-medium">
+            กำลังอ่านไฟล์แจ้งเข้า...
+          </span>
+
+        </div>
+      )}
+
+      {!isInLoading &&
+        inRowCount !== null && (
+          <p className="mt-3 font-medium text-green-600">
+            ✓ อ่านข้อมูลสำเร็จ{" "}
+            {inRowCount.toLocaleString()} รายการ
+          </p>
+        )}
+
+      {!isInLoading &&
+        inPreview.length > 0 && (
+          <button
+            type="button"
+            onClick={
+              handleImportInToSupabase
+            }
+            disabled={isInImporting}
+            className="mt-4 inline-flex items-center rounded-xl bg-green-600 px-5 py-3 font-medium text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+
+            {isInImporting ? (
+              <>
+                <span className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+
+                กำลังเพิ่มพนักงาน...
+              </>
+            ) : (
+              <>
+                💾 บันทึกแจ้งเข้า
+              </>
+            )}
+
+          </button>
+        )}
+
+    </div>
+  )}
+
+</div>
+
+
+{/* =========================
+    แจ้งออก
+========================= */}
+<div className="mb-8 rounded-2xl bg-white p-6 shadow-sm">
+
+  <h2 className="text-xl font-bold text-slate-900">
+    แจ้งออก
+  </h2>
+
+  <p className="mt-2 text-sm text-slate-500">
+    อัปโหลดรายชื่อพนักงานลาออก ระบบจะเปลี่ยนสถานะเป็นลาออก โดยไม่ลบข้อมูลออกจากฐานข้อมูล
+  </p>
+
+  <div className="mt-5">
+
+    <label
+      htmlFor="out-upload"
+      className="inline-flex cursor-pointer items-center rounded-xl bg-red-500 px-5 py-3 font-medium text-white transition hover:bg-red-600"
+    >
+      📂 เลือกไฟล์แจ้งออก
+    </label>
+
+    <input
+      id="out-upload"
+      type="file"
+      accept=".xlsx,.xls"
+      onChange={handleOutFileUpload}
+      className="hidden"
+    />
+
+  </div>
+
+  {outFileName && (
+
+    <div className="mt-5 rounded-xl bg-slate-50 p-4">
+
+      <p className="text-sm text-slate-500">
+        ไฟล์ที่เลือก
+      </p>
+
+      <p className="mt-1 font-semibold text-slate-900">
+        {outFileName}
+      </p>
+
+      {isOutLoading && (
+        <div className="mt-3 flex items-center gap-3 text-red-500">
+
+          <span className="h-5 w-5 animate-spin rounded-full border-2 border-red-500 border-t-transparent" />
+
+          <span className="font-medium">
+            กำลังอ่านไฟล์แจ้งออก...
+          </span>
+
+        </div>
+      )}
+
+      {!isOutLoading &&
+        outRowCount !== null && (
+          <p className="mt-3 font-medium text-green-600">
+            ✓ อ่านข้อมูลสำเร็จ{" "}
+            {outRowCount.toLocaleString()} รายการ
+          </p>
+        )}
+
+      {!isOutLoading &&
+        outPreview.length > 0 && (
+
+        <button
+          type="button"
+          onClick={
+            handleImportOutToSupabase
+          }
+          disabled={isOutImporting}
+          className="mt-4 inline-flex items-center rounded-xl bg-red-500 px-5 py-3 font-medium text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+
+          {isOutImporting ? (
+            <>
+              <span className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+
+              กำลังแจ้งออก...
+            </>
+          ) : (
+            <>
+              💾 บันทึกแจ้งออก
+            </>
+          )}
+
+        </button>
+
+      )}
+
+    </div>
+
+  )}
+
+</div>
+
+
+{/* =========================
+    Import Claims
+========================= */}
+<div className="mb-8 rounded-2xl bg-white p-6 shadow-sm">
+{/* =========================
+    Import Claims
+========================= */}
+<div className="mb-8 rounded-2xl bg-white p-6 shadow-sm">
+
+  <h2 className="text-xl font-bold text-slate-900">
+    นำเข้ารายงานการเคลม
+  </h2>
+
+  <p className="mt-2 text-sm text-slate-500">
+    อัปโหลดไฟล์ Excel รายงานการเคลมจากบริษัทประกัน
+  </p>
+
+  <div className="mt-5">
+
+    <label
+      htmlFor="claim-upload"
+      className="inline-flex cursor-pointer items-center rounded-xl bg-purple-600 px-5 py-3 font-medium text-white transition hover:bg-purple-700"
+    >
+      📄 เลือกไฟล์รายงานเคลม
+    </label>
+
+    <input
+      id="claim-upload"
+      type="file"
+      accept=".xlsx,.xls"
+      onChange={handleClaimFileUpload}
+      className="hidden"
+    />
+
+  </div>
+
+
+  {/* =========================
+      Claim File Status
+  ========================= */}
+
+  {claimFileName && (
+
+    <div className="mt-5 rounded-xl bg-slate-50 p-4">
+
+      <p className="text-sm text-slate-500">
+        ไฟล์ที่เลือก
+      </p>
+
+      <p className="mt-1 font-semibold text-slate-900">
+        {claimFileName}
+      </p>
+
+
+      {/* Loading */}
+
+      {isClaimLoading && (
+
+        <div className="mt-3 flex items-center gap-3 text-purple-600">
+
+          <span className="h-5 w-5 animate-spin rounded-full border-2 border-purple-600 border-t-transparent"></span>
+
+          <span className="font-medium">
+            กำลังอ่านไฟล์รายงานเคลม...
+          </span>
+
+        </div>
+
+      )}
+
+
+      {/* Success */}
+
+      {!isClaimLoading &&
+        claimRowCount !== null && (
+
+        <p className="mt-3 font-medium text-green-600">
+
+          ✓ อ่านข้อมูลรายงานเคลมสำเร็จ{" "}
+
+          {claimRowCount.toLocaleString()} รายการ
+
+        </p>
+
+      )}
+
+
+      {/* Import Button */}
+
+      {!isClaimLoading &&
+        claimPreview.length > 0 && (
+
+        <button
+          type="button"
+          onClick={handleImportClaimsToSupabase}
+          disabled={isClaimImporting}
+          className="mt-4 inline-flex items-center rounded-xl bg-purple-600 px-5 py-3 font-medium text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+
+          {isClaimImporting ? (
+
+            <>
+              <span className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+
+              กำลังบันทึกรายงานเคลม...
+
+            </>
+
+          ) : (
+
+            <>
+              💾 บันทึกรายงานเคลมเข้าระบบ
+            </>
+
+          )}
+
+        </button>
+
+      )}
+
+    </div>
+
+  )}
+
+</div>
+
 
         {/* =========================
             Dashboard
         ========================= */}
-        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-5">
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
             <p className="text-sm text-slate-500">
@@ -953,145 +2927,46 @@ const handleImportToSupabase = async () => {
           </div>
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <p className="text-sm text-slate-500">
-              รายการเคลมทั้งหมด
-            </p>
-
-            <h2 className="mt-2 text-3xl font-bold text-purple-600">
-              {claims.length.toLocaleString()}
-            </h2>
-          </div>
-
-        </div>
-
-        {/* =========================
-            Menu
-        ========================= */}
-        <div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-
-          <button className="rounded-2xl bg-white p-6 text-left shadow-sm transition hover:shadow-md">
-            <div className="text-3xl">🟢</div>
-
-            <h2 className="mt-4 text-xl font-bold text-slate-900">
-              แจ้งเข้า
-            </h2>
-
-            <p className="mt-2 text-sm text-slate-500">
-              อัปโหลดรายชื่อพนักงานเข้าใหม่
-            </p>
-          </button>
-
-          <button className="rounded-2xl bg-white p-6 text-left shadow-sm transition hover:shadow-md">
-            <div className="text-3xl">🔴</div>
-
-            <h2 className="mt-4 text-xl font-bold text-slate-900">
-              แจ้งออก
-            </h2>
-
-            <p className="mt-2 text-sm text-slate-500">
-              อัปโหลดรายชื่อพนักงานลาออก
-            </p>
-          </button>
-
-          <button className="rounded-2xl bg-white p-6 text-left shadow-sm transition hover:shadow-md">
-            <div className="text-3xl">🏢</div>
-
-            <h2 className="mt-4 text-xl font-bold text-slate-900">
-              ไฟล์จากประกัน
-            </h2>
-
-            <p className="mt-2 text-sm text-slate-500">
-              อัปโหลดและตรวจสอบข้อมูลจากบริษัทประกัน
-            </p>
-          </button>
-
-          <div className="rounded-2xl bg-white p-6 text-left shadow-sm transition hover:shadow-md">
-
-  <div className="text-3xl">
-    🏥
-  </div>
-
-  <h2 className="mt-4 text-xl font-bold text-slate-900">
-    รายงานการเคลม
-  </h2>
-
-  <p className="mt-2 text-sm text-slate-500">
-    อัปโหลดรายงานการเคลมจากบริษัทประกัน
+  <p className="text-sm text-slate-500">
+    Claims ทั้งหมด
   </p>
 
-  <label
-    htmlFor="claim-excel-upload"
-    className="mt-5 inline-flex cursor-pointer items-center rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-purple-700"
-  >
-    📂 เลือกไฟล์รายงานเคลม
-  </label>
+  <h2 className="mt-2 text-3xl font-bold text-purple-600">
+    {matchStats.total.toLocaleString()}
+  </h2>
+</div>
 
-  <input
-    id="claim-excel-upload"
-    type="file"
-    accept=".xlsx,.xls"
-    onChange={handleClaimFileUpload}
-    className="hidden"
-  />
+<div className="rounded-2xl bg-white p-6 shadow-sm">
+  <p className="text-sm text-slate-500">
+    Claims พนักงาน (E)
+  </p>
 
-  {claimFileName && (
-    <div className="mt-4 rounded-xl bg-slate-50 p-4">
+  <h2 className="mt-2 text-3xl font-bold text-slate-900">
+    {matchStats.employeeClaims.toLocaleString()}
+  </h2>
+</div>
 
-      <p className="text-xs text-slate-500">
-        ไฟล์ที่เลือก
-      </p>
+<div className="rounded-2xl bg-white p-6 shadow-sm">
+  <p className="text-sm text-slate-500">
+    Match ได้
+  </p>
 
-      <p className="mt-1 text-sm font-semibold text-slate-900">
-        {claimFileName}
-      </p>
+  <h2 className="mt-2 text-3xl font-bold text-green-600">
+    {matchStats.matched.toLocaleString()}
+  </h2>
+</div>
 
-      {isClaimLoading && (
-        <div className="mt-3 flex items-center gap-3 text-purple-600">
+<div className="rounded-2xl bg-white p-6 shadow-sm">
+  <p className="text-sm text-slate-500">
+    Match ไม่ได้
+  </p>
 
-          <span className="h-5 w-5 animate-spin rounded-full border-2 border-purple-600 border-t-transparent"></span>
-
-          <span className="text-sm font-medium">
-            กำลังอ่านรายงานเคลม...
-          </span>
+  <h2 className="mt-2 text-3xl font-bold text-red-600">
+    {matchStats.unmatched.toLocaleString()}
+  </h2>
+</div>
 
         </div>
-      )}
-
-      {!isClaimLoading && claimRowCount !== null && (
-        <p className="mt-2 text-sm font-medium text-green-600">
-          ✓ อ่านข้อมูลสำเร็จ{" "}
-          {claimRowCount.toLocaleString()} รายการ
-        </p>
-      )}
-
-      {!isClaimLoading && claimPreview.length > 0 && (
-        <button
-          type="button"
-          onClick={handleImportClaimsToSupabase}
-          disabled={isClaimImporting}
-          className="mt-4 inline-flex items-center rounded-xl bg-green-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-
-          {isClaimImporting ? (
-            <>
-              <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-              กำลังบันทึก...
-            </>
-          ) : (
-            <>
-              💾 บันทึกเข้าระบบ
-            </>
-          )}
-
-        </button>
-      )}
-
-    </div>
-  )}
-
-</div>
-
-</div>
 
 {/* =========================
     Employee Table
@@ -1222,17 +3097,35 @@ const handleImportToSupabase = async () => {
               premium > 0
                 ? premium / 365
                 : 0;
-
             // =========================
             // ข้อมูลการเคลม
             // =========================
-            const claimSummary =
-              getClaimSummary(employee);
+const employeeIdCard = String(
+  employee.id_card ?? ""
+)
+  .trim()
+  .replace(/\D/g, "");
 
+const claimSummary =
+  claimSummaryMap.get(employeeIdCard) ?? {
+    opd: 0,
+    ipd: 0,
+    count: 0,
+  };
+
+          if (
+            claimSummary.count > 0
+          ) {
+           console.log(
+  "MATCH เจอ:",
+  employeeIdCard,
+  claimSummary
+);
+          }
             return (
 
               <tr
-                key={employee.employee_code || index}
+                key={employee.id ?? `${employee.employee_key}-${index}`}
                 className="border-t text-sm hover:bg-slate-50"
               >
 
