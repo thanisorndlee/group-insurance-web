@@ -1143,14 +1143,32 @@ const checkInEmployees = () => {
 // บันทึก "แจ้งเข้า"
 // เพิ่มเฉพาะพนักงานใหม่
 // =========================
+// =========================
+// บันทึก "แจ้งเข้า"
+// เพิ่มเฉพาะพนักงานใหม่
+// =========================
 const handleImportInToSupabase = async () => {
 
+  console.log("🔥 กดปุ่มบันทึกแจ้งเข้าแล้ว");
+  console.log(
+    "จำนวน inPreview:",
+    inPreview.length
+  );
+
   if (inPreview.length === 0) {
+
+    console.log("❌ inPreview ว่าง");
+
     setError(
       "ยังไม่มีข้อมูลสำหรับนำเข้า"
     );
+
     return;
   }
+
+  console.log(
+    "✅ มีข้อมูล เตรียมตรวจสอบ Supabase"
+  );
 
   setIsInImporting(true);
   setError("");
@@ -1161,8 +1179,17 @@ const handleImportInToSupabase = async () => {
     // ==========================================
     // โหลดข้อมูลล่าสุดจาก Supabase
     // ==========================================
+    console.log(
+      "1️⃣ กำลังโหลดข้อมูลพนักงานจาก Supabase..."
+    );
+
     const currentEmployees =
       await loadAllEmployees();
+
+    console.log(
+      "2️⃣ โหลดสำเร็จ:",
+      currentEmployees.length
+    );
 
     // ==========================================
     // สร้าง Set รหัสพนักงานที่มีอยู่แล้ว
@@ -1205,16 +1232,36 @@ const handleImportInToSupabase = async () => {
       inPreview.length -
       newEmployees.length;
 
-      console.log("========== DEBUG แจ้งเข้า ==========");
-      console.log("จำนวนข้อมูลในไฟล์:", inPreview.length);
-      console.log("จำนวนพนักงานใหม่:", newEmployees.length);
-      console.log("จำนวนพนักงานซ้ำ:", duplicateCount);
-      console.log(
-        "ตัวอย่างข้อมูลแจ้งเข้า:",
-        inPreview.slice(0, 3)
-);
-console.log("====================================");
+    // ==========================================
+    // DEBUG
+    // ==========================================
+    console.log(
+      "========== DEBUG แจ้งเข้า =========="
+    );
 
+    console.log(
+      "จำนวนข้อมูลในไฟล์:",
+      inPreview.length
+    );
+
+    console.log(
+      "จำนวนพนักงานใหม่:",
+      newEmployees.length
+    );
+
+    console.log(
+      "จำนวนพนักงานซ้ำ:",
+      duplicateCount
+    );
+
+    console.log(
+      "ตัวอย่างข้อมูลแจ้งเข้า:",
+      inPreview.slice(0, 3)
+    );
+
+    console.log(
+      "===================================="
+    );
 
     // ==========================================
     // ไม่มีคนใหม่
@@ -1234,6 +1281,11 @@ console.log("====================================");
     // ==========================================
     // Insert เฉพาะคนใหม่
     // ==========================================
+    console.log(
+      "3️⃣ กำลังเพิ่มพนักงานใหม่:",
+      newEmployees.length
+    );
+
     const chunkSize = 500;
 
     let totalImported = 0;
@@ -1250,6 +1302,12 @@ console.log("====================================");
           i + chunkSize
         );
 
+      console.log(
+        "กำลัง Insert:",
+        chunk.length,
+        "รายการ"
+      );
+
       const {
         error,
       } = await supabase
@@ -1259,7 +1317,7 @@ console.log("====================================");
       if (error) {
 
         console.error(
-          "Supabase แจ้งเข้า Error:",
+          "❌ Supabase แจ้งเข้า Error:",
           error
         );
 
@@ -1275,6 +1333,10 @@ console.log("====================================");
     // ==========================================
     // โหลดข้อมูลใหม่
     // ==========================================
+    console.log(
+      "4️⃣ Insert สำเร็จ กำลังโหลดข้อมูลใหม่..."
+    );
+
     const latestEmployees =
       await loadAllEmployees();
 
@@ -1296,10 +1358,15 @@ console.log("====================================");
     setInPreview([]);
     setInRowCount(null);
 
+    console.log(
+      "✅ แจ้งเข้าสำเร็จ:",
+      totalImported
+    );
+
   } catch (err) {
 
     console.error(
-      "Import แจ้งเข้า Error:",
+      "💥 Import แจ้งเข้า Error:",
       err
     );
 
@@ -1313,6 +1380,9 @@ console.log("====================================");
 
     setIsInImporting(false);
 
+    console.log(
+      "🏁 จบการทำงานแจ้งเข้า"
+    );
   }
 };
 // =========================
