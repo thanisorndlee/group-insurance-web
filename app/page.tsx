@@ -1279,57 +1279,57 @@ const handleImportInToSupabase = async () => {
     }
 
     // ==========================================
-    // Insert เฉพาะคนใหม่
-    // ==========================================
-    console.log(
-      "3️⃣ กำลังเพิ่มพนักงานใหม่:",
-      newEmployees.length
+// Insert เฉพาะคนใหม่
+// ==========================================
+console.log(
+  "🚀 กำลังจะ Insert เข้า Supabase:",
+  newEmployees.length,
+  "รายการ"
+);
+
+const chunkSize = 500;
+
+let totalImported = 0;
+
+for (
+  let i = 0;
+  i < newEmployees.length;
+  i += chunkSize
+) {
+
+  const chunk =
+    newEmployees.slice(
+      i,
+      i + chunkSize
     );
 
-    const chunkSize = 500;
+  console.log(
+    "กำลัง Insert:",
+    chunk.length,
+    "รายการ"
+  );
 
-    let totalImported = 0;
+  const {
+    error,
+  } = await supabase
+    .from("employees")
+    .insert(chunk);
 
-    for (
-      let i = 0;
-      i < newEmployees.length;
-      i += chunkSize
-    ) {
+  if (error) {
 
-      const chunk =
-        newEmployees.slice(
-          i,
-          i + chunkSize
-        );
+    console.error(
+      "❌ Supabase แจ้งเข้า Error:",
+      error
+    );
 
-      console.log(
-        "กำลัง Insert:",
-        chunk.length,
-        "รายการ"
-      );
+    throw new Error(
+      `บันทึกแจ้งเข้าไม่สำเร็จ: ${error.message}`
+    );
+  }
 
-      const {
-        error,
-      } = await supabase
-        .from("employees")
-        .insert(chunk);
-
-      if (error) {
-
-        console.error(
-          "❌ Supabase แจ้งเข้า Error:",
-          error
-        );
-
-        throw new Error(
-          `บันทึกแจ้งเข้าไม่สำเร็จ: ${error.message}`
-        );
-      }
-
-      totalImported +=
-        chunk.length;
-    }
-
+  totalImported +=
+    chunk.length;
+}
     // ==========================================
     // โหลดข้อมูลใหม่
     // ==========================================
@@ -2467,6 +2467,11 @@ throw new Error(
         chunk.length;
     }
 
+    console.log(
+      "✅ INSERT สำเร็จ:",
+      totalImported,
+      "รายการ"
+    );
 
     // ==========================================
     // 6. โหลดข้อมูลใหม่จาก Database
@@ -2702,27 +2707,23 @@ try {
       {!isInLoading &&
         inPreview.length > 0 && (
           <button
-            type="button"
-            onClick={
-              handleImportInToSupabase
-            }
-            disabled={isInImporting}
-            className="mt-4 inline-flex items-center rounded-xl bg-green-600 px-5 py-3 font-medium text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-
-            {isInImporting ? (
-              <>
-                <span className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-
-                กำลังเพิ่มพนักงาน...
-              </>
-            ) : (
-              <>
-                💾 บันทึกแจ้งเข้า
-              </>
-            )}
-
-          </button>
+          type="button"
+          onClick={() => {
+            console.log("🟢 CLICK แจ้งเข้า");
+            handleImportInToSupabase();
+          }}
+          disabled={isInImporting}
+          className="mt-4 inline-flex items-center rounded-xl bg-green-600 px-5 py-3 font-medium text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isInImporting ? (
+            <>
+              <span className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              กำลังเพิ่มพนักงาน...
+            </>
+          ) : (
+            <>💾 บันทึกแจ้งเข้า</>
+          )}
+        </button>
         )}
 
     </div>
