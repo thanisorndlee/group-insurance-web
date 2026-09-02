@@ -552,6 +552,8 @@ const [inRowCount, setInRowCount] = useState<number | null>(null);
 const [inPreview, setInPreview] = useState<Employee[]>([]);
 const [isInLoading, setIsInLoading] = useState(false);
 const [isInImporting, setIsInImporting] = useState(false);
+const [inNewCount, setInNewCount] = useState<number | null>(null);
+const [inDuplicateCount, setInDuplicateCount] = useState<number | null>(null);
 
 // =========================
 // แจ้งออก
@@ -812,7 +814,7 @@ const handleInFileUpload = (
   console.log("🟦🟦🟦 HANDLE FILE UPLOAD ถูกเรียก");
 
   const file = event.target.files?.[0];
-  
+
   console.log("📁 ไฟล์ที่เลือก:", file?.name);
 
   if (!file) return;
@@ -820,9 +822,12 @@ const handleInFileUpload = (
   setInFileName(file.name);
   setInRowCount(null);
   setInPreview([]);
+  setInNewCount(null);
+  setInDuplicateCount(null);
   setError("");
   setSuccessMessage("");
   setIsInLoading(true);
+  
 
   const reader = new FileReader();
 
@@ -1022,13 +1027,49 @@ const handleInFileUpload = (
         mappedEmployees
       );
 
-      setInPreview(
-        mappedEmployees
-      );
+      // ========================================
+// ตรวจว่าพนักงานในไฟล์แจ้งเข้าเป็นคนใหม่หรือไม่
+// เทียบกับข้อมูลตั้งต้นที่มีอยู่ใน employees
+// ========================================
 
-      setInRowCount(
-        mappedEmployees.length
-      );
+const existingIdCards = new Set(
+  employees
+    .map((employee) =>
+      String(employee.id_card ?? "")
+        .trim()
+        .replace(/\D/g, "")
+    )
+    .filter(Boolean)
+);
+
+const newEmployees = mappedEmployees.filter((employee) => {
+  const idCard = String(employee.id_card ?? "")
+    .trim()
+    .replace(/\D/g, "");
+
+  // ไม่มีเลขบัตรประชาชน ไม่ถือว่าเป็นพนักงานใหม่
+  if (!idCard) {
+    return false;
+  }
+
+  // ถ้ามีเลขบัตรนี้อยู่ในข้อมูลตั้งต้นแล้ว = คนเดิม
+  return !existingIdCards.has(idCard);
+});
+
+const duplicateCount = mappedEmployees.length - newEmployees.length;
+
+console.log("========== ตรวจสอบแจ้งเข้า ==========");
+console.log("ข้อมูลในไฟล์แจ้งเข้าทั้งหมด:", mappedEmployees.length);
+console.log("พนักงานใหม่:", newEmployees.length);
+console.log("มีอยู่แล้วในระบบ:", duplicateCount);
+console.log("ข้อมูลพนักงานใหม่:", newEmployees);
+
+// เก็บเฉพาะ "คนใหม่" ไว้สำหรับการบันทึก
+setInPreview(newEmployees);
+
+setInRowCount(mappedEmployees.length);
+setInNewCount(newEmployees.length);
+setInDuplicateCount(duplicateCount);
 
     } catch (err) {
 
@@ -1059,91 +1100,7 @@ const handleInFileUpload = (
 
   reader.readAsArrayBuffer(file);
 };
-// =========================
-// ตรวจสอบข้อมูล "แจ้งเข้า" กับฐานข้อมูล
-// =========================
-const checkInEmployees = () => {
-  if (inPreview.length === 0) {
-    setError("ยังไม่มีข้อมูลแจ้งเข้าสำหรับตรวจสอบ");
-    return;
-  }
 
-  // ==========================================
-  // สร้าง Set ของ employee_key ที่มีอยู่ในระบบ
-  // ==========================================
-  const existingEmployeeKeys = new Set(
-    employees
-      .map((employee) => employee.employee_key)
-      .filter(Boolean)
-  );
-
-  // ==========================================
-  // แยกพนักงานใหม่ / พนักงานที่มีอยู่แล้ว
-  // ==========================================
-  const newEmployees: Employee[] = [];
-  const existingEmployees: Employee[] = [];
-
-  inPreview.forEach((employee) => {
-    const key = employee.employee_key;
-
-    if (
-      key &&
-      existingEmployeeKeys.has(key)
-    ) {
-      existingEmployees.push(employee);
-    } else {
-      newEmployees.push(employee);
-    }
-  });
-
-  // ==========================================
-  // Debug
-  // ==========================================
-  console.log(
-    "========== ตรวจสอบแจ้งเข้า =========="
-  );
-
-  console.log(
-    "ข้อมูลแจ้งเข้าทั้งหมด:",
-    inPreview.length
-  );
-
-  console.log(
-    "มีอยู่ในฐานข้อมูลแล้ว:",
-    existingEmployees.length
-  );
-
-  console.log(
-    "เป็นพนักงานใหม่:",
-    newEmployees.length
-  );
-
-  console.log(
-    "พนักงานใหม่:",
-    newEmployees
-  );
-
-  console.log(
-    "พนักงานที่มีอยู่แล้ว:",
-    existingEmployees
-  );
-
-  console.log(
-    "===================================="
-  );
-
-  // ==========================================
-  // เก็บเฉพาะพนักงานใหม่ไว้ใน Preview
-  // ==========================================
-  setInPreview(newEmployees);
-
-  setInRowCount(newEmployees.length);
-
-  setSuccessMessage(
-    `ตรวจสอบแจ้งเข้าสำเร็จ พบพนักงานใหม่ ${newEmployees.length} รายการ และมีอยู่ในระบบแล้ว ${existingEmployees.length} รายการ`
-  );
-};
-// =========================
 // บันทึก "แจ้งเข้า"
 // เพิ่มเฉพาะพนักงานใหม่
 // =========================
@@ -1190,50 +1147,13 @@ const handleImportInToSupabase = async () => {
       "1️⃣ กำลังโหลดข้อมูลพนักงานจาก Supabase..."
     );
 
-    const currentEmployees =
-      await loadAllEmployees();
+    const newEmployees = inPreview;
 
     console.log(
-      "2️⃣ โหลดสำเร็จ:",
-      currentEmployees.length
+      "📥 จำนวนพนักงานใหม่ที่จะบันทึก:",
+      newEmployees.length
     );
-
-// ==========================================
-// สร้าง Set เลขบัตรประชาชนที่มีอยู่แล้ว
-// ==========================================
-const existingIdCards = new Set(
-  currentEmployees
-    .map((employee) =>
-      String(employee.id_card ?? "")
-        .trim()
-        .replace(/\D/g, "")
-    )
-    .filter(Boolean)
-);
-
-// ==========================================
-// เอาเฉพาะคนใหม่
-// คนเดิม = เลขบัตรประชาชนซ้ำ
-// ==========================================
-const newEmployees =
-  inPreview.filter((employee) => {
-
-    const idCard =
-      String(employee.id_card ?? "")
-        .trim()
-        .replace(/\D/g, "");
-
-    return (
-      idCard !== "" &&
-      !existingIdCards.has(idCard)
-    );
-  });
-
-const duplicateCount =
-  inPreview.length -
-  newEmployees.length;
-
-// ==========================================
+ // ==========================================
 // DEBUG
 // ==========================================
 console.log(
@@ -1241,18 +1161,8 @@ console.log(
 );
 
 console.log(
-  "จำนวนข้อมูลในไฟล์:",
-  inPreview.length
-);
-
-console.log(
-  "จำนวนพนักงานใหม่:",
+  "จำนวนพนักงานใหม่ที่จะบันทึก:",
   newEmployees.length
-);
-
-console.log(
-  "จำนวนพนักงานซ้ำ:",
-  duplicateCount
 );
 
 console.log(
@@ -1263,28 +1173,20 @@ console.log(
 console.log(
   "===================================="
 );
-console.log(
-  "📌 ตรวจสอบก่อน Insert",
-  {
-    ในไฟล์: inPreview.length,
-    คนใหม่: newEmployees.length,
-    คนซ้ำ: duplicateCount,
-  }
-);
     // ==========================================
     // ไม่มีคนใหม่
     // ==========================================
     if (newEmployees.length === 0) {
 
-      setSuccessMessage(
-        `ไม่พบพนักงานใหม่ ข้อมูล ${inPreview.length.toLocaleString()} รายการมีอยู่ในระบบแล้ว`
-      );
+  setSuccessMessage(
+    `ไม่มีพนักงานใหม่ ข้อมูล ${inPreview.length.toLocaleString()} รายการมีอยู่ในระบบแล้ว`
+  );
 
-      setInPreview([]);
-      setInRowCount(null);
+  setInPreview([]);
+  setInRowCount(null);
 
-      return;
-    }
+  return;
+}
 
     // ==========================================
 // Insert เฉพาะคนใหม่
@@ -1360,11 +1262,13 @@ for (
     // แจ้งผล
     // ==========================================
     setSuccessMessage(
-      `แจ้งเข้าสำเร็จ เพิ่มพนักงานใหม่ ${totalImported.toLocaleString()} รายการ | ข้อมูลซ้ำ ${duplicateCount.toLocaleString()} รายการ`
-    );
+  `บันทึกเข้าสู่ฐานข้อมูลแล้ว เพิ่มพนักงานใหม่ ${totalImported.toLocaleString()} คน`
+);
 
     setInPreview([]);
     setInRowCount(null);
+    setInNewCount(null);
+    setInDuplicateCount(null);
 
     console.log(
       "✅ แจ้งเข้าสำเร็จ:",
@@ -2239,9 +2143,9 @@ console.log(
 
   } catch (err) {
     console.error(
-      "Import Claims Error:",
-      err
-    );
+  "Import Claims Error:",
+  err
+);
 
     setError(
       err instanceof Error
@@ -2600,13 +2504,7 @@ try {
                 </div>
               )}
 
-              {/* Success */}
-              {!isLoading && rowCount !== null && (
-                <p className="mt-2 font-medium text-green-600">
-                  ✓ อ่านข้อมูลสำเร็จ{" "}
-                  {rowCount.toLocaleString()} รายการ
-                </p>
-              )}
+
 
               {/* Error */}
               {error && (
@@ -2646,8 +2544,6 @@ try {
           )}
 
         </div>
-        </div>
-
 
 {/* =========================
     แจ้งเข้า
@@ -2664,12 +2560,12 @@ try {
 
   <div className="mt-5">
 
-    <label
-      htmlFor="in-upload"
-      className="inline-flex cursor-pointer items-center rounded-xl bg-blue-600 px-5 py-3 font-medium text-white transition hover:bg-blue-700"
-    >
-      📂 เลือกไฟล์แจ้งเข้า
-    </label>
+   <label
+  htmlFor="in-upload"
+  className="inline-flex cursor-pointer items-center rounded-xl bg-blue-600 px-5 py-3 font-medium text-white transition hover:bg-blue-700"
+>
+  📂 เลือกไฟล์แจ้งเข้า
+</label>
 
     <input
       id="in-upload"
@@ -2711,9 +2607,34 @@ try {
             {inRowCount.toLocaleString()} รายการ
           </p>
         )}
+        {!isInLoading && inRowCount !== null && (
+  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+
+    <div className="rounded-xl border border-[#7ED957]/20 bg-[#7ED957]/5 p-4">
+      <div className="text-xs text-gray-400">
+        พนักงานใหม่
+      </div>
+
+      <div className="mt-1 text-2xl font-black text-[#7ED957]">
+        {inNewCount?.toLocaleString() ?? 0} คน
+      </div>
+    </div>
+
+    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+      <div className="text-xs text-gray-400">
+        มีอยู่แล้วในข้อมูลตั้งต้น
+      </div>
+
+      <div className="mt-1 text-2xl font-black text-white">
+        {inDuplicateCount?.toLocaleString() ?? 0} คน
+      </div>
+    </div>
+
+  </div>
+)}
 
       {!isInLoading &&
-        inPreview.length > 0 && (
+      inRowCount !== null && (
           <button
   type="button"
   onClick={() => {
@@ -2724,7 +2645,7 @@ try {
   disabled={isInImporting}
   className="mt-4 inline-flex items-center rounded-xl bg-green-600 px-5 py-3 font-medium text-white"
 >
-  💾 บันทึกแจ้งเข้า
+  💾 บันทึกข้อมูลเข้าสู่ฐานข้อมูล
 </button>
         )}
 
@@ -2832,11 +2753,6 @@ try {
 
 </div>
 
-
-{/* =========================
-    Import Claims
-========================= */}
-<div className="mb-8 rounded-2xl bg-white p-6 shadow-sm">
 {/* =========================
     Import Claims
 ========================= */}
