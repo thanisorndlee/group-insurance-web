@@ -2633,21 +2633,29 @@ try {
   </div>
 )}
 
-      {!isInLoading &&
-      inRowCount !== null && (
-          <button
-  type="button"
-  onClick={() => {
-    alert("กดปุ่มแจ้งเข้าแล้ว");
-    console.log("🟢 CLICK แจ้งเข้า");
-    handleImportInToSupabase();
-  }}
-  disabled={isInImporting}
-  className="mt-4 inline-flex items-center rounded-xl bg-green-600 px-5 py-3 font-medium text-white"
->
-  💾 บันทึกข้อมูลเข้าสู่ฐานข้อมูล
-</button>
-        )}
+{!isInLoading &&
+  inRowCount !== null && (
+    <button
+      type="button"
+      onClick={() => {
+        console.log("🟢 CLICK แจ้งเข้า");
+        handleImportInToSupabase();
+      }}
+      disabled={isInImporting}
+      className="mt-4 inline-flex items-center rounded-xl bg-green-600 px-5 py-3 font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-70"
+    >
+      {isInImporting ? (
+        <>
+          <span className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+          กำลังบันทึกข้อมูล...
+        </>
+      ) : (
+        <>
+          💾 บันทึกข้อมูลเข้าสู่ฐานข้อมูล
+        </>
+      )}
+    </button>
+  )}
 
     </div>
   )}
