@@ -32,6 +32,8 @@ type Employee = {
   remark: string;
   resignation_date: string | null;
   status: string;
+  insurance_card_no: string;
+life_plan: string;
 };
 type Claim = {
   id?: string;
@@ -393,9 +395,37 @@ export default function Home() {
   const [error, setError] = useState("");
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [claims, setClaims] = useState<Claim[]>([]);
+  const [employeeSearchInput, setEmployeeSearchInput] = useState("");
+const [employeeSearchTerm, setEmployeeSearchTerm] = useState("");
   // =========================
 // สรุป Claims แบบรวดเร็ว
 // =========================
+const filteredEmployees = useMemo(() => {
+  const search = employeeSearchTerm
+    .trim()
+    .toLowerCase();
+
+  if (!search) {
+    return employees;
+  }
+
+  return employees.filter((employee) => {
+    const employeeCode = String(
+      employee.employee_code ?? ""
+    )
+      .trim()
+      .toLowerCase();
+
+    const fullName = `${employee.title ?? ""} ${employee.first_name ?? ""} ${employee.last_name ?? ""}`
+      .trim()
+      .toLowerCase();
+
+    return (
+      employeeCode.includes(search) ||
+      fullName.includes(search)
+    );
+  });
+}, [employees, employeeSearchTerm]);
 const claimSummaryMap = useMemo(() => {
 
   return getClaimSummaryMap(
@@ -554,15 +584,25 @@ const [isInLoading, setIsInLoading] = useState(false);
 const [isInImporting, setIsInImporting] = useState(false);
 const [inNewCount, setInNewCount] = useState<number | null>(null);
 const [inDuplicateCount, setInDuplicateCount] = useState<number | null>(null);
+const [inSuccessMessage, setInSuccessMessage] = useState("");
 
-// =========================
 // แจ้งออก
-// =========================
 const [outFileName, setOutFileName] = useState("");
 const [outRowCount, setOutRowCount] = useState<number | null>(null);
 const [outPreview, setOutPreview] = useState<any[]>([]);
 const [isOutLoading, setIsOutLoading] = useState(false);
 const [isOutImporting, setIsOutImporting] = useState(false);
+const [showOutList, setShowOutList] = useState(false);
+const [outSuccessMessage, setOutSuccessMessage] = useState("");
+
+// ประกันส่งกลับ
+const [insuranceFileName, setInsuranceFileName] = useState("");
+const [insuranceRowCount, setInsuranceRowCount] = useState<number | null>(null);
+const [isInsuranceLoading, setIsInsuranceLoading] = useState(false);
+const [insuranceMatched, setInsuranceMatched] = useState<Employee[]>([]);
+const [insuranceUnmatched, setInsuranceUnmatched] = useState<Employee[]>([]);
+const [isInsuranceImporting, setIsInsuranceImporting] =
+  useState(false);
 
       // =========================
   // โหลดข้อมูลพนักงานจาก Supabase
@@ -778,6 +818,9 @@ const mappedEmployees: Employee[] = dataRows
         String(row[18] ?? "").trim() !== ""
           ? "ลาออก"
           : "มีผลประกัน",
+          insurance_card_no: "",
+
+life_plan: "",
     };
   });
         console.log("ข้อมูลหลัง Mapping:", mappedEmployees);
@@ -827,6 +870,7 @@ const handleInFileUpload = (
   setError("");
   setSuccessMessage("");
   setIsInLoading(true);
+  setInSuccessMessage("");
   
 
   const reader = new FileReader();
@@ -1019,6 +1063,12 @@ const handleInFileUpload = (
 
               status:
                 "มีผลประกัน",
+              
+                insurance_card_no:
+                "",
+
+              life_plan:
+                "",
             };
           });
 
@@ -1112,47 +1162,33 @@ const handleImportInToSupabase = async () => {
     inPreview.length
   );
 
-
   console.log("🔥 กดปุ่มบันทึกแจ้งเข้าแล้ว");
+
   console.log(
     "จำนวน inPreview:",
     inPreview.length
   );
 
-  if (inPreview.length === 0) {
-
-    console.log("❌ inPreview ว่าง");
-
-    setError(
-      "ยังไม่มีข้อมูลสำหรับนำเข้า"
-    );
-
-    return;
-  }
-
   console.log(
-    "✅ มีข้อมูล เตรียมตรวจสอบ Supabase"
-  );
+  "📌 เริ่มกระบวนการบันทึกแจ้งเข้า"
+);
 
   setIsInImporting(true);
   setError("");
   setSuccessMessage("");
+  setInSuccessMessage("");
 
   try {
 
-    // ==========================================
-    // โหลดข้อมูลล่าสุดจาก Supabase
-    // ==========================================
-    console.log(
-      "1️⃣ กำลังโหลดข้อมูลพนักงานจาก Supabase..."
-    );
+// ==========================================
+// เตรียมข้อมูลพนักงานใหม่สำหรับบันทึก
+// ==========================================
+const newEmployees = inPreview;
 
-    const newEmployees = inPreview;
-
-    console.log(
-      "📥 จำนวนพนักงานใหม่ที่จะบันทึก:",
-      newEmployees.length
-    );
+console.log(
+  "📥 จำนวนพนักงานใหม่ที่จะบันทึก:",
+  newEmployees.length
+);
  // ==========================================
 // DEBUG
 // ==========================================
@@ -1173,21 +1209,26 @@ console.log(
 console.log(
   "===================================="
 );
-    // ==========================================
-    // ไม่มีคนใหม่
-    // ==========================================
-    if (newEmployees.length === 0) {
+// ==========================================
+// ไม่มีพนักงานใหม่
+// ==========================================
+if (newEmployees.length === 0) {
 
-  setSuccessMessage(
-    `ไม่มีพนักงานใหม่ ข้อมูล ${inPreview.length.toLocaleString()} รายการมีอยู่ในระบบแล้ว`
+  console.log(
+    "ℹ️ ไม่มีพนักงานใหม่ ไม่ต้องเพิ่มข้อมูล"
   );
 
-  setInPreview([]);
-  setInRowCount(null);
+  // ให้ปุ่มแสดงสถานะกำลังบันทึกสั้น ๆ
+  await new Promise((resolve) =>
+    setTimeout(resolve, 700)
+  );
+
+  setInSuccessMessage(
+    `บันทึกเข้าสู่ฐานข้อมูลแล้ว ไม่มีพนักงานใหม่ ข้อมูล ${inPreview.length.toLocaleString()} รายการมีอยู่ในระบบแล้ว`
+  );
 
   return;
 }
-
     // ==========================================
 // Insert เฉพาะคนใหม่
 // ==========================================
@@ -1261,12 +1302,11 @@ for (
     // ==========================================
     // แจ้งผล
     // ==========================================
-    setSuccessMessage(
+    setInSuccessMessage(
   `บันทึกเข้าสู่ฐานข้อมูลแล้ว เพิ่มพนักงานใหม่ ${totalImported.toLocaleString()} คน`
 );
 
     setInPreview([]);
-    setInRowCount(null);
     setInNewCount(null);
     setInDuplicateCount(null);
 
@@ -1315,6 +1355,8 @@ const handleOutFileUpload = (
 
   setOutRowCount(null);
   setOutPreview([]);
+  setShowOutList(false);
+  setOutSuccessMessage("");
 
   setError("");
   setSuccessMessage("");
@@ -1382,18 +1424,29 @@ const handleOutFileUpload = (
         rows.slice(2);
 
       const mappedRows =
-        dataRows
-          .filter((row) => {
+  dataRows
+    .filter((row) => {
+      const employeeCode = String(row[1] ?? "")
+        .trim()
+        .replace(/\s+/g, "")
+        .toUpperCase();
 
-            const employeeCode =
-              String(row[1] ?? "")
-                .trim();
+      const firstName = String(row[3] ?? "").trim();
+      const lastName = String(row[4] ?? "").trim();
 
-            return (
-              employeeCode !== ""
-            );
+      // ตัดแถวหัวตาราง / ตัวอย่างข้อมูลออก
+      if (
+        employeeCode === "EMP.CODE" ||
+        employeeCode === "รหัสพนักงาน"
+      ) {
+        return false;
+      }
 
-          })
+      return (
+        employeeCode !== "" &&
+        (firstName !== "" || lastName !== "")
+      );
+    })
           .map((row) => {
 
             return {
@@ -2159,6 +2212,368 @@ console.log(
 
   }
 };
+const handleInsuranceFileUpload = (
+  event: React.ChangeEvent<HTMLInputElement>
+) => {
+  const file = event.target.files?.[0];
+
+  if (!file) return;
+
+  console.log("📄 ไฟล์ประกันส่งกลับ:", file.name);
+
+  setInsuranceFileName(file.name);
+  setInsuranceRowCount(null);
+  setIsInsuranceLoading(true);
+  setError("");
+  setSuccessMessage("");
+
+  const reader = new FileReader();
+
+  reader.onload = (e) => {
+    try {
+      const data = e.target?.result;
+
+      if (!data) {
+        throw new Error("ไม่พบข้อมูลไฟล์ประกันส่งกลับ");
+      }
+
+      const workbook = XLSX.read(data, {
+        type: "array",
+        cellDates: true,
+      });
+
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+
+      const rows = XLSX.utils.sheet_to_json<any[]>(worksheet, {
+        header: 1,
+        defval: "",
+      });
+
+      console.log("========== ประกันส่งกลับ ==========");
+      console.log("ข้อมูลทั้งหมด:", rows);
+
+      // ==========================================
+// แปลงข้อมูลไฟล์ประกันส่งกลับ
+// ==========================================
+
+const dataRows = rows
+  .slice(1)
+  .filter((row) =>
+    row.some(
+      (cell: any) =>
+        String(cell ?? "").trim() !== ""
+    )
+  );
+
+console.log(
+  "จำนวนข้อมูลประกันส่งกลับ:",
+  dataRows.length
+);
+
+const mappedEmployees: Employee[] =
+  dataRows.map((row) => {
+
+    const employeeCode =
+      String(row[2] ?? "")
+        .trim()
+        .replace(/\s+/g, "")
+        .toUpperCase();
+
+    return {
+      employee_key: "",
+      
+      employee_code:
+        employeeCode,
+
+      vendor:
+        String(row[1] ?? "").trim(),
+
+      branch:
+        String(row[12] ?? "").trim(),
+
+      title:
+        String(row[3] ?? "").trim(),
+
+      first_name:
+        String(row[4] ?? "").trim(),
+
+      last_name:
+        String(row[5] ?? "").trim(),
+
+      gender:
+        String(row[8] ?? "").trim(),
+
+      date_of_birth:
+        formatExcelDate(row[9]),
+
+      id_card:
+  String(row[11] ?? "")
+    .trim()
+    .replace(/\D/g, ""),
+
+      employment_date:
+        null,
+
+      effective_date:
+        formatExcelDate(row[20]),
+
+      plan:
+        row[23] !== "" &&
+        row[23] !== null &&
+        row[23] !== undefined
+          ? Number(row[23])
+          : null,
+
+      insurance_type:
+        "",
+
+      department:
+        String(row[15] ?? "").trim(),
+
+      bank_account:
+        String(row[19] ?? "").trim(),
+
+      bank_name:
+        String(row[18] ?? "").trim(),
+
+      phone:
+        String(row[25] ?? "").trim(),
+
+      remark:
+        "",
+
+      resignation_date:
+        formatExcelDate(row[21]),
+
+      status:
+        String(row[6] ?? "").trim(),
+
+      insurance_card_no:
+        String(row[27] ?? "").trim(),
+
+      life_plan:
+        String(row[22] ?? "").trim(),
+    };
+  });
+
+console.log(
+  "ข้อมูลประกันส่งกลับที่ Mapping แล้ว:",
+  mappedEmployees
+);
+
+setInsuranceRowCount(
+  mappedEmployees.length
+);
+// ==========================================
+// จับคู่รหัสพนักงานกับ Master Database
+// ==========================================
+
+const employeeMap = new Map<string, Employee>();
+
+employees.forEach((employee) => {
+  const code = String(
+    employee.employee_code ?? ""
+  )
+    .trim()
+    .replace(/\s+/g, "")
+    .toUpperCase();
+
+  if (code !== "") {
+    employeeMap.set(code, employee);
+  }
+});
+
+const matched: Employee[] = [];
+const unmatched: Employee[] = [];
+
+mappedEmployees.forEach((insuranceEmployee) => {
+
+  const code = String(
+    insuranceEmployee.employee_code ?? ""
+  )
+    .trim()
+    .replace(/\s+/g, "")
+    .toUpperCase();
+
+  const masterEmployee =
+    employeeMap.get(code);
+
+  if (masterEmployee) {
+  matched.push({
+    ...masterEmployee,
+
+    plan:
+      insuranceEmployee.plan,
+
+    status:
+      insuranceEmployee.status,
+
+    resignation_date:
+      insuranceEmployee.resignation_date,
+
+    insurance_card_no:
+      insuranceEmployee.insurance_card_no,
+
+    life_plan:
+      insuranceEmployee.life_plan,
+  });
+} else {
+  unmatched.push(insuranceEmployee);
+}
+});
+
+console.log(
+  "========== ผลการจับคู่ =========="
+);
+
+console.log(
+  "จับคู่ได้:",
+  matched.length
+);
+
+console.log(
+  "จับคู่ไม่ได้:",
+  unmatched.length
+);
+
+console.log(
+  "รายการที่จับคู่ไม่ได้:",
+  unmatched
+);
+
+setInsuranceMatched(matched);
+setInsuranceUnmatched(unmatched);
+
+    } catch (err) {
+      console.error(
+        "Insurance File Error:",
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "ไม่สามารถอ่านไฟล์ประกันส่งกลับได้"
+      );
+    } finally {
+      setIsInsuranceLoading(false);
+    }
+  };
+
+  reader.onerror = () => {
+    setError("ไม่สามารถอ่านไฟล์ประกันส่งกลับได้");
+    setIsInsuranceLoading(false);
+  };
+
+    reader.readAsArrayBuffer(file);
+};
+
+// ==========================================
+// บันทึกข้อมูลประกันส่งกลับลง Supabase
+// ==========================================
+
+const handleImportInsuranceToSupabase = async () => {
+  if (insuranceMatched.length === 0) {
+    setError("ไม่มีข้อมูลประกันส่งกลับที่จับคู่ได้");
+    return;
+  }
+
+  setIsInsuranceImporting(true);
+  setError("");
+  setSuccessMessage("");
+
+  try {
+    const chunkSize = 500;
+    let successCount = 0;
+
+    console.log(
+      "🚀 เริ่มบันทึกข้อมูลประกันส่งกลับ:",
+      insuranceMatched.length,
+      "รายการ"
+    );
+
+    for (let i = 0; i < insuranceMatched.length; i += chunkSize) {
+      const chunk = insuranceMatched.slice(i, i + chunkSize);
+
+      console.log(
+        `💾 กำลังบันทึกชุด ${Math.floor(i / chunkSize) + 1} / ${Math.ceil(
+          insuranceMatched.length / chunkSize
+        )} (${chunk.length} รายการ)`
+      );
+
+      const rows = chunk
+        .filter((employee) => employee.id)
+        .map((employee) => ({
+          id: employee.id,
+          employee_key: employee.employee_key,
+          employee_code: employee.employee_code,
+          vendor: employee.vendor,
+          branch: employee.branch,
+          title: employee.title,
+          first_name: employee.first_name,
+          last_name: employee.last_name,
+          gender: employee.gender,
+          date_of_birth: employee.date_of_birth,
+          id_card: employee.id_card,
+          employment_date: employee.employment_date,
+          effective_date: employee.effective_date,
+          plan: employee.plan,
+          insurance_type: employee.insurance_type,
+          department: employee.department,
+          bank_account: employee.bank_account,
+          bank_name: employee.bank_name,
+          phone: employee.phone,
+          remark: employee.remark,
+          resignation_date: employee.resignation_date,
+          status: employee.status,
+          insurance_card_no: employee.insurance_card_no,
+          life_plan: employee.life_plan,
+          updated_at: new Date().toISOString(),
+        }));
+
+      if (rows.length === 0) {
+        continue;
+      }
+
+      const { error } = await supabase
+        .from("employees")
+        .upsert(rows, {
+          onConflict: "id",
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      successCount += rows.length;
+    }
+
+    console.log(
+      "✅ บันทึกข้อมูลประกันส่งกลับสำเร็จ:",
+      successCount,
+      "รายการ"
+    );
+
+    const latestEmployees = await loadAllEmployees();
+    setEmployees(latestEmployees);
+
+    setSuccessMessage(
+      `บันทึกข้อมูลประกันส่งกลับสำเร็จ ${successCount.toLocaleString()} รายการ`
+    );
+  } catch (err) {
+    console.error("❌ Insurance Import Error:", err);
+
+    setError(
+      err instanceof Error
+        ? err.message
+        : "ไม่สามารถบันทึกข้อมูลประกันส่งกลับได้"
+    );
+  } finally {
+    setIsInsuranceImporting(false);
+  }
+};
+
 const handleImportToSupabase = async () => {
   if (employees.length === 0) {
     setError("ยังไม่มีข้อมูลสำหรับนำเข้า");
@@ -2632,6 +3047,11 @@ try {
 
   </div>
 )}
+{inSuccessMessage && (
+  <p className="mt-4 font-medium text-green-600">
+    ✓ {inSuccessMessage}
+  </p>
+)}
 
 {!isInLoading &&
   inRowCount !== null && (
@@ -2642,7 +3062,7 @@ try {
         handleImportInToSupabase();
       }}
       disabled={isInImporting}
-      className="mt-4 inline-flex items-center rounded-xl bg-green-600 px-5 py-3 font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-70"
+      className="mt-4 inline-flex items-center rounded-xl bg-green-600 px-5 py-3 font-medium text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-70"
     >
       {isInImporting ? (
         <>
@@ -2720,29 +3140,77 @@ try {
       )}
 
       {!isOutLoading &&
-        outRowCount !== null && (
-          <p className="mt-3 font-medium text-green-600">
-            ✓ อ่านข้อมูลสำเร็จ{" "}
-            {outRowCount.toLocaleString()} รายการ
-          </p>
+  outRowCount !== null && (
+    <>
+      <div className="mt-3 flex items-center justify-between">
+        <p className="font-medium text-red-500">
+          ⚠️ แจ้งออก {outRowCount.toLocaleString()} คน
+        </p>
+
+        {outPreview.length > 0 && (
+          <button
+            type="button"
+            onClick={() =>
+              setShowOutList(!showOutList)
+            }
+            className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-500 transition hover:bg-red-50"
+          >
+            {showOutList
+              ? "ซ่อนรายชื่อ"
+              : "ดูรายชื่อพนักงานออก"}
+          </button>
+        )}
+      </div>
+
+      {showOutList &&
+        outPreview.length > 0 && (
+          <div className="mt-4 max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white">
+            <div className="divide-y divide-slate-100">
+              {outPreview.map(
+                (employee, index) => (
+                  <div
+                    key={`${employee.employee_code}-${index}`}
+                    className="flex items-center justify-between gap-4 px-4 py-3"
+                  >
+                    <div>
+                      <p className="font-medium text-slate-900">
+                        {employee.title}{" "}
+                        {employee.first_name}{" "}
+                        {employee.last_name}
+                      </p>
+
+                      <p className="mt-1 text-xs text-slate-500">
+                        รหัสพนักงาน:{" "}
+                        {employee.employee_code}
+                      </p>
+                    </div>
+
+                    <span className="shrink-0 rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-500">
+                      ลาออก
+                    </span>
+                  </div>
+                )
+              )}
+            </div>
+          </div>
         )}
 
-      {!isOutLoading &&
-        outPreview.length > 0 && (
+      {outSuccessMessage && (
+        <p className="mt-4 font-medium text-green-600">
+          ✓ {outSuccessMessage}
+        </p>
+      )}
 
+      {outRowCount !== null && (
         <button
           type="button"
-          onClick={
-            handleImportOutToSupabase
-          }
+          onClick={handleImportOutToSupabase}
           disabled={isOutImporting}
           className="mt-4 inline-flex items-center rounded-xl bg-red-500 px-5 py-3 font-medium text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
         >
-
           {isOutImporting ? (
             <>
               <span className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-
               กำลังแจ้งออก...
             </>
           ) : (
@@ -2750,17 +3218,114 @@ try {
               💾 บันทึกแจ้งออก
             </>
           )}
-
         </button>
-
       )}
-
+    </>
+  )}
     </div>
 
   )}
 
 </div>
 
+{/* =========================
+    ประกันส่งกลับ
+========================= */}
+
+<div className="mb-8 rounded-2xl bg-white p-6 shadow-sm">
+
+  <h2 className="text-xl font-bold text-slate-900">
+    ประกันส่งกลับ
+  </h2>
+
+  <p className="mt-2 text-sm text-slate-500">
+    อัปโหลดไฟล์ข้อมูลที่ได้รับกลับจากบริษัทประกัน
+  </p>
+
+  <div className="mt-5">
+
+    <label
+      htmlFor="insurance-upload"
+      className="inline-flex cursor-pointer items-center rounded-xl bg-orange-500 px-5 py-3 font-medium text-white transition hover:bg-orange-600"
+    >
+      📂 เลือกไฟล์ประกันส่งกลับ
+    </label>
+
+    <input
+      id="insurance-upload"
+      type="file"
+      accept=".xlsx,.xls"
+      onChange={handleInsuranceFileUpload}
+      className="hidden"
+    />
+
+  </div>
+
+  {insuranceFileName && (
+
+    <div className="mt-5 rounded-xl bg-slate-50 p-4">
+
+      <p className="text-sm text-slate-500">
+        ไฟล์ที่เลือก
+      </p>
+
+      <p className="mt-1 font-semibold text-slate-900">
+        {insuranceFileName}
+      </p>
+
+      {isInsuranceLoading && (
+
+        <div className="mt-3 flex items-center gap-3 text-orange-500">
+
+          <span className="h-5 w-5 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
+
+          <span className="font-medium">
+            กำลังอ่านไฟล์ประกันส่งกลับ...
+          </span>
+
+        </div>
+
+      )}
+
+      {!isInsuranceLoading &&
+        insuranceRowCount !== null && (
+
+          <p className="mt-3 font-medium text-green-600">
+            ✓ อ่านข้อมูลสำเร็จ{" "}
+            {insuranceRowCount.toLocaleString()} รายการ
+          </p>
+
+        )}
+        {/* ปุ่มบันทึกข้อมูลประกันส่งกลับ */}
+{insuranceMatched.length > 0 && (
+  <button
+    type="button"
+    onClick={handleImportInsuranceToSupabase}
+    disabled={isInsuranceImporting}
+    className="
+      mt-4 w-full
+      rounded-xl
+      bg-[#7ED957]
+      px-5 py-3
+      text-sm font-black
+      text-black
+      transition
+      hover:bg-[#8FEA68]
+      disabled:cursor-not-allowed
+      disabled:opacity-50
+    "
+  >
+    {isInsuranceImporting
+      ? "กำลังบันทึกข้อมูล..."
+      : `💾 บันทึกข้อมูลประกันส่งกลับ (${insuranceMatched.length} รายการ)`}
+  </button>
+)}
+
+    </div>
+
+  )}
+
+</div> 
 {/* =========================
     Import Claims
 ========================= */}
@@ -2976,15 +3541,57 @@ try {
       รายชื่อผู้เอาประกัน
     </h2>
 
+<div className="mt-4 flex flex-col gap-3 sm:flex-row">
+  <input
+    type="text"
+    value={employeeSearchInput}
+    onChange={(e) =>
+      setEmployeeSearchInput(e.target.value)
+    }
+    onKeyDown={(e) => {
+      if (e.key === "Enter") {
+        setEmployeeSearchTerm(employeeSearchInput);
+      }
+    }}
+    placeholder="ค้นหารหัสพนักงาน หรือ ชื่อ-นามสกุล..."
+    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 sm:max-w-md"
+  />
+
+  <button
+    type="button"
+    onClick={() => {
+      setEmployeeSearchTerm(
+        employeeSearchInput
+      );
+    }}
+    className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+  >
+    🔍 ค้นหาพนักงาน
+  </button>
+
+  {employeeSearchTerm && (
+    <button
+      type="button"
+      onClick={() => {
+        setEmployeeSearchInput("");
+        setEmployeeSearchTerm("");
+      }}
+      className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+    >
+      ล้างการค้นหา
+    </button>
+  )}
+</div>
     {employees.length > 0 && (
-      <p className="mt-1 text-sm text-slate-500">
-        แสดงทั้งหมด{" "}
-        {employees.length.toLocaleString()} รายการ
-        {" • "}
-        มีข้อมูลเคลม{" "}
-        {claims.length.toLocaleString()} รายการ
-      </p>
-    )}
+  <p className="mt-1 text-sm text-slate-500">
+    {employeeSearchTerm
+      ? `พบ ${filteredEmployees.length.toLocaleString()} รายการ จากทั้งหมด ${employees.length.toLocaleString()} รายการ`
+      : `แสดงทั้งหมด ${employees.length.toLocaleString()} รายการ`}
+    {" • "}
+    มีข้อมูลเคลม{" "}
+    {claims.length.toLocaleString()} รายการ
+  </p>
+)}
 
   </div>
 
@@ -3044,6 +3651,10 @@ try {
           </th>
 
           <th className="px-6 py-4">
+            หมายเลขบัตร
+          </th>
+
+          <th className="px-6 py-4">
             ครั้ง
           </th>
 
@@ -3057,7 +3668,7 @@ try {
           <tr className="border-t">
 
             <td
-              colSpan={13}
+              colSpan={14}
               className="px-6 py-10 text-center text-slate-400"
             >
               {isLoading
@@ -3069,7 +3680,7 @@ try {
 
         ) : (
 
-          employees.map((employee, index) => {
+          filteredEmployees.map((employee, index) => {
 
             // =========================
             // จำนวนวันที่มีประกัน
@@ -3202,11 +3813,15 @@ const claimSummary =
                   {claimSummary.ipd.toLocaleString()} บาท
                 </td>
 
+                {/* หมายเลขบัตร */}
+                <td className="px-6 py-4">
+                  {employee.insurance_card_no || "-"}
+                </td>
+
                 {/* จำนวนครั้ง */}
                 <td className="px-6 py-4">
                   {claimSummary.count}
                 </td>
-
               </tr>
 
             );
