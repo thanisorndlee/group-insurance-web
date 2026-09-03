@@ -2561,14 +2561,20 @@ const handleImportInsuranceToSupabase = async () => {
     setSuccessMessage(
       `บันทึกข้อมูลประกันส่งกลับสำเร็จ ${successCount.toLocaleString()} รายการ`
     );
-  } catch (err) {
-    console.error("❌ Insurance Import Error:", err);
+  } catch (err: any) {
+  console.error("❌ Insurance Import Error:", err);
+  console.error("❌ Error JSON:", JSON.stringify(err, null, 2));
+  console.error("❌ Error message:", err?.message);
+  console.error("❌ Error details:", err?.details);
+  console.error("❌ Error hint:", err?.hint);
+  console.error("❌ Error code:", err?.code);
 
-    setError(
-      err instanceof Error
-        ? err.message
-        : "ไม่สามารถบันทึกข้อมูลประกันส่งกลับได้"
-    );
+  setError(
+    err?.message ||
+      err?.details ||
+      err?.hint ||
+      "ไม่สามารถบันทึกข้อมูลประกันส่งกลับได้"
+  );
   } finally {
     setIsInsuranceImporting(false);
   }
