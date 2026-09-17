@@ -2689,13 +2689,11 @@ const handleImportInsuranceToSupabase = async () => {
           const { error } = await supabase
             .from("employees")
             .update({
-              plan: employee.plan,
-              status: employee.status,
-              resignation_date: employee.resignation_date,
-              insurance_card_no: employee.insurance_card_no,
-              life_plan: employee.life_plan,
-              updated_at: new Date().toISOString(),
-            })
+            plan: employee.plan,
+            insurance_card_no: employee.insurance_card_no,
+            life_plan: employee.life_plan,
+            updated_at: new Date().toISOString(),
+          })
             .eq("id", employee.id);
 
           if (error) {
