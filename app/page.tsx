@@ -129,19 +129,14 @@ function calculateEffectiveDate(
 // ประเภทปีประกัน
 // ดูจากวันที่มีผลประกัน
 // =========================
-function getInsuranceType(
-  effectiveDate: string | null
-): string {
+function getInsuranceType(effectiveDate: string | null): string {
   if (!effectiveDate) return "";
 
-  const [year, month, day] =
-    effectiveDate.split("-").map(Number);
+  const [year, month, day] = effectiveDate.split("-").map(Number);
 
-  if (!year || !month || !day) {
-    return "";
-  }
+  if (!year || !month || !day) return "";
 
-  return month === 1 && day === 1
+  return year < 2026 || (year === 2026 && month === 1 && day === 1)
     ? "เต็มปี"
     : "ไม่เต็มปี";
 }
