@@ -935,11 +935,19 @@ for (const employee of mappedEmployees) {
 const uniqueEmployees =
   Array.from(employeeMap.values());
 
-console.log(
-  "🔴 จำนวนคนที่เป็นลาออก:",
-  uniqueEmployees.filter(
-    (employee) => employee.status === "ลาออก"
-  ).length
+const resignedCount = uniqueEmployees.filter(
+  (employee) => employee.status === "ลาออก"
+).length;
+
+const workingCount = uniqueEmployees.filter(
+  (employee) => employee.status === "มีผลประกัน"
+).length;
+
+alert(
+  `ตรวจสอบ Master Excel\n\n` +
+  `ลาออก: ${resignedCount} คน\n` +
+  `มีผลประกัน: ${workingCount} คน\n` +
+  `รวม: ${uniqueEmployees.length} คน`
 );
 
 console.log(
