@@ -9,7 +9,7 @@ import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
 
 type Employee = {
-  id?: string;
+  id?: string
   employee_key: string | null;
 
   employee_code: string;
@@ -749,8 +749,7 @@ try {
         cellDates: true,
       });
 
-      const firstSheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[firstSheetName];
+      const worksheet = workbook.Sheets["ทำ"];
 
       const rows = XLSX.utils.sheet_to_json<any[]>(worksheet, {
         header: 1,
@@ -948,6 +947,13 @@ alert(
   `ลาออก: ${resignedCount} คน\n` +
   `มีผลประกัน: ${workingCount} คน\n` +
   `รวม: ${uniqueEmployees.length} คน`
+);
+
+console.log(
+  "🔴 จำนวนคนที่เป็นลาออก:",
+  uniqueEmployees.filter(
+    (employee) => employee.status === "ลาออก"
+  ).length
 );
 
 console.log(
