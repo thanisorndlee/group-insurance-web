@@ -3682,6 +3682,15 @@ try {
   >
     🔍 ค้นหาพนักงาน
   </button>
+    <select
+    value={statusFilter}
+    onChange={(e) => setStatusFilter(e.target.value)}
+    className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+  >
+    <option value="ทั้งหมด">ทั้งหมด</option>
+    <option value="มีผลประกัน">ทำงาน</option>
+    <option value="ลาออก">ลาออก</option>
+  </select>
 
   {employeeSearchTerm && (
     <button
