@@ -61,13 +61,13 @@ type Claim = {
 function formatExcelDate(value: any): string | null {
   if (!value) return null;
 
-  if (value instanceof Date) {
-    const year = value.getFullYear();
-    const month = String(value.getMonth() + 1).padStart(2, "0");
-    const day = String(value.getDate()).padStart(2, "0");
+    if (value instanceof Date) {
+  const year = value.getUTCFullYear();
+  const month = String(value.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(value.getUTCDate()).padStart(2, "0");
 
-    return `${year}-${month}-${day}`;
-  }
+  return `${year}-${month}-${day}`;
+}
 
   if (typeof value === "number") {
     const date = XLSX.SSF.parse_date_code(value);
@@ -96,6 +96,54 @@ function formatExcelDate(value: any): string | null {
   }
 
   return null;
+}
+// =========================
+// คำนวณวันที่มีผลประกัน
+// วันที่เริ่มงาน + 119 วัน
+// =========================
+function calculateEffectiveDate(
+  employmentDate: string | null
+): string | null {
+  if (!employmentDate) return null;
+
+  const date = new Date(`${employmentDate}T00:00:00Z`);
+
+  if (isNaN(date.getTime())) {
+    return null;
+  }
+
+  date.setUTCDate(date.getUTCDate() + 119);
+
+  const year = date.getUTCFullYear();
+  const month = String(
+    date.getUTCMonth() + 1
+  ).padStart(2, "0");
+  const day = String(
+    date.getUTCDate()
+  ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+// =========================
+// ประเภทปีประกัน
+// ดูจากวันที่มีผลประกัน
+// =========================
+function getInsuranceType(
+  effectiveDate: string | null
+): string {
+  if (!effectiveDate) return "";
+
+  const [year, month, day] =
+    effectiveDate.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    return "";
+  }
+
+  return month === 1 && day === 1
+    ? "เต็มปี"
+    : "ไม่เต็มปี";
 }
 // =========================
 // สร้างชื่อสำหรับ Match
@@ -396,23 +444,16 @@ export default function Home() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [claims, setClaims] = useState<Claim[]>([]);
   const [employeeSearchInput, setEmployeeSearchInput] = useState("");
-const [employeeSearchTerm, setEmployeeSearchTerm] = useState("");
+  const [employeeSearchTerm, setEmployeeSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ทั้งหมด");
   // =========================
 // สรุป Claims แบบรวดเร็ว
 // =========================
 const filteredEmployees = useMemo(() => {
-  const search = employeeSearchTerm
-    .trim()
-    .toLowerCase();
-
-  if (!search) {
-    return employees;
-  }
+  const search = employeeSearchTerm.trim().toLowerCase();
 
   return employees.filter((employee) => {
-    const employeeCode = String(
-      employee.employee_code ?? ""
-    )
+    const employeeCode = String(employee.employee_code ?? "")
       .trim()
       .toLowerCase();
 
@@ -420,12 +461,18 @@ const filteredEmployees = useMemo(() => {
       .trim()
       .toLowerCase();
 
-    return (
+    const matchesSearch =
+      !search ||
       employeeCode.includes(search) ||
-      fullName.includes(search)
-    );
+      fullName.includes(search);
+
+    const matchesStatus =
+      statusFilter === "ทั้งหมด" ||
+      employee.status === statusFilter;
+
+    return matchesSearch && matchesStatus;
   });
-}, [employees, employeeSearchTerm]);
+}, [employees, employeeSearchTerm, statusFilter]);
 const claimSummaryMap = useMemo(() => {
 
   return getClaimSummaryMap(
@@ -673,205 +720,19 @@ try {
   // =========================
   // อ่านไฟล์ Excel
   // =========================
-  const handleFileUpload = (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const file = event.target.files?.[0];
-
-    if (!file) return;
-
-    setFileName(file.name);
-    setError("");
-    setSuccessMessage("");
-    setRowCount(null);
-    setEmployees([]);
-    setIsLoading(true);
-
-    const reader = new FileReader();
-
-    reader.onload = (e) => {
-      try {
-        const data = e.target?.result;
-
-        if (!data) {
-          throw new Error("ไม่พบข้อมูลไฟล์");
-        }
-
-        const workbook = XLSX.read(data, {
-          type: "array",
-          cellDates: true,
-        });
-
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-
-        // อ่าน Excel เป็น Array
-        // เพราะไฟล์จริงของเรามี Header 2 แถว
-        const rows = XLSX.utils.sheet_to_json<any[]>(worksheet, {
-          header: 1,
-          defval: "",
-        });
-
-        console.log("ข้อมูลทั้งหมดจาก Excel:", rows);
-
-        // ---------------------------------
-        // ตรวจสอบว่ามีข้อมูลหรือไม่
-        // ---------------------------------
-        if (rows.length < 5) {
-          throw new Error(
-            "ไฟล์ Excel ไม่มีข้อมูลพนักงาน หรือรูปแบบไฟล์ไม่ถูกต้อง"
-          );
-        }
-
-        // ---------------------------------
-        // ไฟล์ตั้งต้นมี 4 แถวก่อนข้อมูลจริง
-        //
-        // แถวที่ 1 = Header ภาษาไทย
-        // แถวที่ 2 = Header ภาษาอังกฤษ
-        // แถวที่ 3 = ชื่อบริษัท
-        // แถวที่ 4 = Company
-        // แถวที่ 5 เป็นต้นไป = ข้อมูลพนักงานจริง
-        // ---------------------------------
-        const dataRows = rows.slice(4);
-
-        // ---------------------------------
-        // แปลงข้อมูล Excel → Employee
-        // ---------------------------------
-const mappedEmployees: Employee[] = dataRows
-  .filter((row) => {
-    const firstName = String(row[5] ?? "").trim();
-    const lastName = String(row[6] ?? "").trim();
-
-    return (
-      firstName !== "" &&
-      lastName !== ""
-    );
-  })
-  .map((row) => {
-
-    const vendor = String(row[1] ?? "").trim();
-
-    const employeeCode = String(row[3] ?? "")
-      .trim()
-      .replace(/\s+/g, "")
-      .toUpperCase();
-
-    const firstName = String(row[5] ?? "").trim();
-
-    const lastName = String(row[6] ?? "").trim();
-
-    const idCard = String(row[9] ?? "").trim();
-
-    return {
-      employee_key: createEmployeeKey(
-  vendor,
-  employeeCode,
-  firstName,
-  lastName,
-  idCard,
-  formatExcelDate(row[11])
-),
-
-      employee_code: employeeCode,
-
-      vendor,
-
-      branch: String(row[2] ?? "").trim(),
-
-      title: String(row[4] ?? "").trim(),
-
-      first_name: firstName,
-
-      last_name: lastName,
-
-      gender: String(row[7] ?? "").trim(),
-
-      date_of_birth: formatExcelDate(row[8]),
-
-      id_card: idCard,
-
-      employment_date: formatExcelDate(row[10]),
-
-      effective_date: formatExcelDate(row[11]),
-
-      plan:
-        row[12] !== ""
-          ? Number(row[12])
-          : null,
-
-      insurance_type: "เต็มปี",
-
-      department: String(row[13] ?? "").trim(),
-
-      bank_account: String(row[14] ?? "").trim(),
-
-      bank_name: String(row[15] ?? "").trim(),
-
-      phone: String(row[16] ?? "").trim(),
-
-      remark: String(row[17] ?? "").trim(),
-
-      resignation_date:
-        formatExcelDate(row[19]),
-
-      status:
-        String(row[18] ?? "").trim() !== ""
-          ? "ลาออก"
-          : "มีผลประกัน",
-          insurance_card_no: "",
-
-life_plan: "",
-    };
-  });
-        console.log("ข้อมูลหลัง Mapping:", mappedEmployees);
-
-        setEmployees(mappedEmployees);
-        setRowCount(mappedEmployees.length);
-
-      } catch (err) {
-        console.error(err);
-
-        setError(
-          err instanceof Error
-            ? err.message
-            : "ไม่สามารถอ่านไฟล์ Excel ได้"
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    reader.onerror = () => {
-      setError("เกิดข้อผิดพลาดในการอ่านไฟล์");
-      setIsLoading(false);
-    };
-
-    reader.readAsArrayBuffer(file);
-  };
-  // =========================
-// อ่านไฟล์ Excel "แจ้งเข้า"
-// =========================
-const handleInFileUpload = (
+ const handleFileUpload = (
   event: React.ChangeEvent<HTMLInputElement>
 ) => {
-  console.log("🟦🟦🟦 HANDLE FILE UPLOAD ถูกเรียก");
-
   const file = event.target.files?.[0];
-
-  console.log("📁 ไฟล์ที่เลือก:", file?.name);
 
   if (!file) return;
 
-  setInFileName(file.name);
-  setInRowCount(null);
-  setInPreview([]);
-  setInNewCount(null);
-  setInDuplicateCount(null);
+  setFileName(file.name);
   setError("");
   setSuccessMessage("");
-  setIsInLoading(true);
-  setInSuccessMessage("");
-  
+  setRowCount(null);
+  setEmployees([]);
+  setIsLoading(true);
 
   const reader = new FileReader();
 
@@ -880,7 +741,7 @@ const handleInFileUpload = (
       const data = e.target?.result;
 
       if (!data) {
-        throw new Error("ไม่พบข้อมูลไฟล์แจ้งเข้า");
+        throw new Error("ไม่พบข้อมูลไฟล์");
       }
 
       const workbook = XLSX.read(data, {
@@ -888,194 +749,195 @@ const handleInFileUpload = (
         cellDates: true,
       });
 
-      const firstSheetName =
-        workbook.SheetNames[0];
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
 
-      const worksheet =
-        workbook.Sheets[firstSheetName];
+      const rows = XLSX.utils.sheet_to_json<any[]>(worksheet, {
+        header: 1,
+        defval: "",
+      });
 
-      const rows =
-        XLSX.utils.sheet_to_json<any[]>(
-          worksheet,
-          {
-            header: 1,
-            defval: "",
-          }
-        );
-
-      console.log(
-        "========== แจ้งเข้า =========="
-      );
-
-      console.log(
-        "ข้อมูลทั้งหมด:",
-        rows
-      );
-
+      console.log("ข้อมูลทั้งหมดจาก Excel:", rows);
+     
       if (rows.length < 3) {
         throw new Error(
-          "ไฟล์แจ้งเข้าไม่มีข้อมูล หรือรูปแบบไฟล์ไม่ถูกต้อง"
+          "ไฟล์ Excel ไม่มีข้อมูลพนักงาน หรือรูปแบบไฟล์ไม่ถูกต้อง"
         );
       }
 
-      // ==========================================
-      // ไฟล์แจ้งเข้ามี Header 2 แถว
+      // ---------------------------------
+      // ไฟล์ตั้งต้น
       //
-      // แถวที่ 1 = ภาษาไทย
-      // แถวที่ 2 = ภาษาอังกฤษ
-      // แถวที่ 3 เป็นต้นไป = ข้อมูล
-      // ==========================================
-      const dataRows =
-        rows.slice(2);
+      // แถวที่ 1 = Header ภาษาไทย
+      // แถวที่ 2 = Header ภาษาอังกฤษ
+      // แถวที่ 3 เป็นต้นไป = ข้อมูลพนักงาน
+      // ---------------------------------
+      const dataRows = rows.slice(4);
 
-      // ==========================================
-      // Mapping Excel → Employee
-      // ==========================================
-      const mappedEmployees: Employee[] =
-        dataRows
-          .filter((row) => {
+const mappedEmployees: Employee[] = dataRows
+  .filter((row) => {
+    const employeeCode = String(row[3] ?? "").trim();
+    const firstName = String(row[5] ?? "").trim();
+    const lastName = String(row[6] ?? "").trim();
 
-            const employeeCode =
-              String(row[2] ?? "")
-                .trim();
+    return (
+      employeeCode !== "" &&
+      (firstName !== "" || lastName !== "")
+    );
+  })
+  .map((row) => {
+    const vendor = String(row[1] ?? "").trim();
 
-            const firstName =
-              String(row[4] ?? "")
-                .trim();
+    const employeeCode = String(row[3] ?? "")
+      .trim()
+      .replace(/\s+/g, "")
+      .toUpperCase();
 
-            const lastName =
-              String(row[5] ?? "")
-                .trim();
+    const title = String(row[4] ?? "").trim();
+    const firstName = String(row[5] ?? "").trim();
+    const lastName = String(row[6] ?? "").trim();
 
-            return (
-              employeeCode !== "" ||
-              (
-                firstName !== "" &&
-                lastName !== ""
-              )
-            );
-          })
-          .map((row) => {
+    const idCard = String(row[9] ?? "")
+      .trim()
+      .replace(/\D/g, "");
 
-            const vendor =
-              String(row[1] ?? "")
-                .trim();
+    const employmentDate = formatExcelDate(row[10]);
 
-            const employeeCode =
-              String(row[2] ?? "")
-                .trim()
-                .replace(/\s+/g, "")
-                .toUpperCase();
+const effectiveDate =
+  calculateEffectiveDate(employmentDate);
 
-            const firstName =
-              String(row[4] ?? "")
-                .trim();
+const resignationDate =
+  formatExcelDate(row[20]);
 
-            const lastName =
-              String(row[5] ?? "")
-                .trim();
+console.log(
+  "📅 วันที่เริ่มงาน:",
+  employmentDate
+);
 
-            const idCard =
-              String(row[8] ?? "")
-                .trim()
-                .replace(/\D/g, "");
+console.log(
+  "📅 วันที่มีผลประกัน (+119 วัน):",
+  effectiveDate
+);
 
-            const effectiveDate =
-              formatExcelDate(row[10]);
+console.log(
+  "📅 ประเภทปี:",
+  getInsuranceType(effectiveDate)
+);
 
-            return {
+    return {
+      employee_key: createEmployeeKey(
+        vendor,
+        employeeCode,
+        firstName,
+        lastName,
+        idCard,
+        effectiveDate
+      ),
 
-              employee_key:
-                createEmployeeKey(
-                  vendor,
-                  employeeCode,
-                  firstName,
-                  lastName,
-                  idCard,
-                  effectiveDate
-                ),
+      employee_code: employeeCode,
+      vendor,
+      branch: "",
+      title,
+      first_name: firstName,
+      last_name: lastName,
+      gender: String(row[7] ?? "").trim(),
 
-              employee_code:
-                employeeCode,
+      date_of_birth: formatExcelDate(row[8]),
+      id_card: idCard,
 
-              vendor:
-                vendor,
+      employment_date: employmentDate,
+      effective_date: effectiveDate,
 
-              branch:
-                vendor,
+      plan:
+        row[12] !== "" &&
+        row[12] !== null &&
+        row[12] !== undefined
+          ? Number(row[12])
+          : null,
 
-              title:
-                String(row[3] ?? "")
-                  .trim(),
+      insurance_type: getInsuranceType(effectiveDate),
 
-              first_name:
-                firstName,
+      department: "",
+      bank_account: "",
+      bank_name: "",
+      phone: "",
 
-              last_name:
-                lastName,
+      remark: String(row[19] ?? "").trim(),
 
-              gender:
-                String(row[6] ?? "")
-                  .trim(),
+      resignation_date: resignationDate,
 
-              date_of_birth:
-                formatExcelDate(row[7]),
+      status:
+        resignationDate !== null &&
+        resignationDate !== ""
+          ? "ลาออก"
+          : "มีผลประกัน",
 
-              id_card:
-                idCard,
+      insurance_card_no: "",
+      life_plan: "",
+    };
+      });
 
-              employment_date:
-                formatExcelDate(row[9]),
+// =========================
+// รวมข้อมูลพนักงานที่มีหลายแถว
+// เช่น แถวทำงาน + แถวลาออก
+// ให้เหลือพนักงาน 1 คน
+// =========================
+const employeeMap = new Map<string, Employee>();
 
-              effective_date:
-                effectiveDate,
+for (const employee of mappedEmployees) {
+  const idCard = String(employee.id_card ?? "")
+    .trim()
+    .replace(/\D/g, "");
 
-              plan:
-                row[11] !== ""
-                  ? Number(row[11])
-                  : null,
+  // ถ้าไม่มีเลขบัตรประชาชน ให้ข้าม
+  if (!idCard) {
+    continue;
+  }
 
-              insurance_type:
-                "เต็มปี",
+  const existing = employeeMap.get(idCard);
 
-              department:
-                String(row[12] ?? "")
-                  .trim(),
+  // คนนี้ยังไม่เคยเจอ
+  if (!existing) {
+    employeeMap.set(idCard, employee);
+    continue;
+  }
 
-              bank_account:
-                String(row[13] ?? "")
-                  .trim(),
+  // ถ้าแถวใหม่เป็นข้อมูลลาออก
+  if (
+    employee.resignation_date &&
+    !existing.resignation_date
+  ) {
+    employeeMap.set(idCard, {
+      ...existing,
+      resignation_date:
+        employee.resignation_date,
+      status: "ลาออก",
+    });
+  }
+}
 
-              bank_name:
-                String(row[14] ?? "")
-                  .trim(),
+const uniqueEmployees =
+  Array.from(employeeMap.values());
 
-              phone:
-                String(row[15] ?? "")
-                  .trim(),
+console.log(
+  "ข้อมูลหลังรวมพนักงานซ้ำ:",
+  uniqueEmployees
+);
 
-              remark:
-                String(row[16] ?? "")
-                  .trim(),
+console.log(
+  "จำนวนแถวในไฟล์:",
+  mappedEmployees.length
+);
 
-              resignation_date:
-                null,
+console.log(
+  "จำนวนพนักงานหลังรวม:",
+  uniqueEmployees.length
+);
 
-              status:
-                "มีผลประกัน",
-              
-                insurance_card_no:
-                "",
+setEmployees(uniqueEmployees);
+setRowCount(uniqueEmployees.length);
 
-              life_plan:
-                "",
-            };
-          });
-
-      console.log(
-        "ข้อมูลแจ้งเข้าหลัง Mapping:",
-        mappedEmployees
-      );
+  
 
       // ========================================
 // ตรวจว่าพนักงานในไฟล์แจ้งเข้าเป็นคนใหม่หรือไม่
@@ -1133,7 +995,7 @@ setInDuplicateCount(duplicateCount);
 
     } finally {
 
-      setIsInLoading(false);
+      setIsLoading(false);
 
     }
   };
@@ -1150,7 +1012,266 @@ setInDuplicateCount(duplicateCount);
 
   reader.readAsArrayBuffer(file);
 };
+const handleInFileUpload = (
+  event: React.ChangeEvent<HTMLInputElement>
+) => {
+  const file = event.target.files?.[0];
 
+  if (!file) return;
+
+  console.log("📄 ไฟล์แจ้งเข้า:", file.name);
+
+  setInFileName(file.name);
+  setInRowCount(null);
+  setInPreview([]);
+  setInNewCount(null);
+  setInDuplicateCount(null);
+  setIsInLoading(true);
+  setError("");
+  setInSuccessMessage("");
+  setSuccessMessage("");
+
+  const reader = new FileReader();
+
+  reader.onload = (e) => {
+    try {
+      const data = e.target?.result;
+
+      if (!data) {
+        throw new Error("ไม่พบข้อมูลไฟล์แจ้งเข้า");
+      }
+
+      const workbook = XLSX.read(data, {
+        type: "array",
+        cellDates: true,
+      });
+
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+
+      const rows = XLSX.utils.sheet_to_json<any[]>(worksheet, {
+        header: 1,
+        defval: "",
+      });
+
+      console.log("========== ไฟล์แจ้งเข้า ==========");
+      console.log("ข้อมูลทั้งหมด:", rows);
+
+      const dataRows = rows
+        .slice(4)
+        .filter((row) =>
+          row.some(
+            (cell: any) =>
+              String(cell ?? "").trim() !== ""
+          )
+        );
+
+      console.log(
+        "จำนวนข้อมูลแจ้งเข้า:",
+        dataRows.length
+      );
+
+      const mappedEmployees: Employee[] =
+        dataRows.map((row) => {
+          const vendor = String(
+            row[1] ?? ""
+          ).trim();
+
+          const employeeCode = String(
+            row[2] ?? ""
+          )
+            .trim()
+            .replace(/\s+/g, "")
+            .toUpperCase();
+
+          const firstName = String(
+            row[4] ?? ""
+          ).trim();
+
+          const lastName = String(
+            row[5] ?? ""
+          ).trim();
+
+          const idCard = String(
+            row[8] ?? ""
+          )
+            .trim()
+            .replace(/\D/g, "");
+
+          const effectiveDate =
+            formatExcelDate(row[10]);
+
+          return {
+            employee_key: createEmployeeKey(
+              vendor,
+              employeeCode,
+              firstName,
+              lastName,
+              idCard,
+              effectiveDate
+            ),
+
+            employee_code: employeeCode,
+
+            vendor,
+
+            branch: vendor,
+
+            title: String(
+              row[3] ?? ""
+            ).trim(),
+
+            first_name: firstName,
+
+            last_name: lastName,
+
+            gender: String(
+              row[6] ?? ""
+            ).trim(),
+
+            date_of_birth:
+              formatExcelDate(row[7]),
+
+            id_card: idCard,
+
+            employment_date:
+              formatExcelDate(row[9]),
+
+            effective_date:
+              effectiveDate,
+
+            plan:
+              row[11] !== "" &&
+              row[11] !== null &&
+              row[11] !== undefined
+                ? Number(row[11])
+                : null,
+
+            insurance_type:
+            effectiveDate &&
+            effectiveDate.endsWith("-01-01")
+              ? "เต็มปี"
+              : effectiveDate
+              ? "ไม่เต็มปี"
+              : "",
+
+            department: String(
+              row[12] ?? ""
+            ).trim(),
+
+            bank_account: String(
+              row[13] ?? ""
+            ).trim(),
+
+            bank_name: String(
+              row[14] ?? ""
+            ).trim(),
+
+            phone: String(
+              row[15] ?? ""
+            ).trim(),
+
+            remark: String(
+              row[16] ?? ""
+            ).trim(),
+
+            resignation_date: null,
+
+            status: "มีผลประกัน",
+
+            insurance_card_no: "",
+
+            life_plan: "",
+          };
+        });
+
+      console.log(
+        "ข้อมูลแจ้งเข้าที่ Mapping แล้ว:",
+        mappedEmployees
+      );
+
+      // ==========================================
+      // ตรวจสอบพนักงานที่มีอยู่แล้ว
+      // ใช้เลขบัตรประชาชนเป็นตัวตรวจสอบ
+      // ==========================================
+
+      const existingIdCards = new Set(
+        employees
+          .map((employee) =>
+            String(employee.id_card ?? "")
+              .trim()
+              .replace(/\D/g, "")
+          )
+          .filter((idCard) => idCard !== "")
+      );
+
+      const newEmployees: Employee[] = [];
+      const duplicateEmployees: Employee[] = [];
+
+      mappedEmployees.forEach((employee) => {
+        const idCard = String(
+          employee.id_card ?? ""
+        )
+          .trim()
+          .replace(/\D/g, "");
+
+        if (
+          idCard !== "" &&
+          existingIdCards.has(idCard)
+        ) {
+          duplicateEmployees.push(employee);
+        } else {
+          newEmployees.push(employee);
+
+          if (idCard !== "") {
+            existingIdCards.add(idCard);
+          }
+        }
+      });
+
+      console.log(
+        "พนักงานใหม่:",
+        newEmployees.length
+      );
+
+      console.log(
+        "พนักงานซ้ำ:",
+        duplicateEmployees.length
+      );
+
+      setInPreview(newEmployees);
+      setInRowCount(mappedEmployees.length);
+      setInNewCount(newEmployees.length);
+      setInDuplicateCount(
+        duplicateEmployees.length
+      );
+
+    } catch (err) {
+      console.error(
+        "In File Error:",
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "ไม่สามารถอ่านไฟล์แจ้งเข้าได้"
+      );
+    } finally {
+      setIsInLoading(false);
+    }
+  };
+
+  reader.onerror = () => {
+    setError(
+      "ไม่สามารถอ่านไฟล์แจ้งเข้าได้"
+    );
+
+    setIsInLoading(false);
+  };
+
+  reader.readAsArrayBuffer(file);
+};
 // บันทึก "แจ้งเข้า"
 // เพิ่มเฉพาะพนักงานใหม่
 // =========================
@@ -2484,7 +2605,7 @@ const handleImportInsuranceToSupabase = async () => {
   setSuccessMessage("");
 
   try {
-    const chunkSize = 500;
+    const chunkSize = 100;
     let successCount = 0;
 
     console.log(
@@ -2496,57 +2617,42 @@ const handleImportInsuranceToSupabase = async () => {
     for (let i = 0; i < insuranceMatched.length; i += chunkSize) {
       const chunk = insuranceMatched.slice(i, i + chunkSize);
 
-      console.log(
-        `💾 กำลังบันทึกชุด ${Math.floor(i / chunkSize) + 1} / ${Math.ceil(
-          insuranceMatched.length / chunkSize
-        )} (${chunk.length} รายการ)`
+      const uniqueChunk = Array.from(
+        new Map(
+          chunk
+            .filter((employee) => employee.id)
+            .map((employee) => [employee.id, employee])
+        ).values()
       );
 
-      const rows = chunk
-        .filter((employee) => employee.id)
-        .map((employee) => ({
-          id: employee.id,
-          employee_key: employee.employee_key,
-          employee_code: employee.employee_code,
-          vendor: employee.vendor,
-          branch: employee.branch,
-          title: employee.title,
-          first_name: employee.first_name,
-          last_name: employee.last_name,
-          gender: employee.gender,
-          date_of_birth: employee.date_of_birth,
-          id_card: employee.id_card,
-          employment_date: employee.employment_date,
-          effective_date: employee.effective_date,
-          plan: employee.plan,
-          insurance_type: employee.insurance_type,
-          department: employee.department,
-          bank_account: employee.bank_account,
-          bank_name: employee.bank_name,
-          phone: employee.phone,
-          remark: employee.remark,
-          resignation_date: employee.resignation_date,
-          status: employee.status,
-          insurance_card_no: employee.insurance_card_no,
-          life_plan: employee.life_plan,
-          updated_at: new Date().toISOString(),
-        }));
+      console.log(
+        `💾 กำลังบันทึก ${Math.min(
+          i + chunkSize,
+          insuranceMatched.length
+        )} / ${insuranceMatched.length}`
+      );
 
-      if (rows.length === 0) {
-        continue;
-      }
+      await Promise.all(
+        uniqueChunk.map(async (employee) => {
+          const { error } = await supabase
+            .from("employees")
+            .update({
+              plan: employee.plan,
+              status: employee.status,
+              resignation_date: employee.resignation_date,
+              insurance_card_no: employee.insurance_card_no,
+              life_plan: employee.life_plan,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", employee.id);
 
-      const { error } = await supabase
-        .from("employees")
-        .upsert(rows, {
-          onConflict: "id",
-        });
+          if (error) {
+            throw error;
+          }
+        })
+      );
 
-      if (error) {
-        throw error;
-      }
-
-      successCount += rows.length;
+      successCount += uniqueChunk.length;
     }
 
     console.log(
@@ -2562,19 +2668,19 @@ const handleImportInsuranceToSupabase = async () => {
       `บันทึกข้อมูลประกันส่งกลับสำเร็จ ${successCount.toLocaleString()} รายการ`
     );
   } catch (err: any) {
-  console.error("❌ Insurance Import Error:", err);
-  console.error("❌ Error JSON:", JSON.stringify(err, null, 2));
-  console.error("❌ Error message:", err?.message);
-  console.error("❌ Error details:", err?.details);
-  console.error("❌ Error hint:", err?.hint);
-  console.error("❌ Error code:", err?.code);
+    console.error("❌ Insurance Import Error:", err);
+    console.error("❌ Error JSON:", JSON.stringify(err, null, 2));
+    console.error("❌ Error message:", err?.message);
+    console.error("❌ Error details:", err?.details);
+    console.error("❌ Error hint:", err?.hint);
+    console.error("❌ Error code:", err?.code);
 
-  setError(
-    err?.message ||
-      err?.details ||
-      err?.hint ||
-      "ไม่สามารถบันทึกข้อมูลประกันส่งกลับได้"
-  );
+    setError(
+      err?.message ||
+        err?.details ||
+        err?.hint ||
+        "ไม่สามารถบันทึกข้อมูลประกันส่งกลับได้"
+    );
   } finally {
     setIsInsuranceImporting(false);
   }
@@ -2924,6 +3030,29 @@ try {
 
                 </div>
               )}
+              {/* Save Button */}
+{!isLoading && rowCount !== null && (
+  <button
+    type="button"
+    onClick={() => {
+      console.log("🟢 CLICK บันทึกข้อมูลตั้งต้น");
+      handleImportToSupabase();
+    }}
+    disabled={isImporting}
+    className="mt-4 inline-flex items-center rounded-xl bg-green-600 px-5 py-3 font-medium text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-70"
+  >
+    {isImporting ? (
+      <>
+        <span className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+        กำลังบันทึกข้อมูล...
+      </>
+    ) : (
+      <>
+        💾 บันทึกข้อมูลเข้าสู่ฐานข้อมูล
+      </>
+    )}
+  </button>
+)}
 
 
 
@@ -2938,27 +3067,6 @@ try {
   <p className="mt-2 font-medium text-green-600">
     ✓ {successMessage}
   </p>
-)}
-
-{/* Import Button */}
-{!isLoading && employees.length > 0 && (
-  <button
-    type="button"
-    onClick={handleImportToSupabase}
-    disabled={isImporting}
-    className="mt-4 inline-flex items-center rounded-xl bg-green-600 px-5 py-3 font-medium text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-  >
-    {isImporting ? (
-      <>
-        <span className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-        กำลังบันทึกข้อมูล...
-      </>
-    ) : (
-      <>
-        💾 บันทึกข้อมูลเข้าระบบ
-      </>
-    )}
-  </button>
 )}
 
             </div>
@@ -3625,6 +3733,10 @@ try {
           </th>
 
           <th className="px-6 py-4">
+            ประเภทปี
+          </th>
+
+          <th className="px-6 py-4">
             มีผลประกัน
           </th>
 
@@ -3763,6 +3875,10 @@ const claimSummary =
                 {/* แผน */}
                 <td className="px-6 py-4">
                   {employee.plan ?? "-"}
+                </td>
+
+                <td>
+                  {employee.insurance_type || "-"}
                 </td>
 
                 {/* วันที่มีผล */}
