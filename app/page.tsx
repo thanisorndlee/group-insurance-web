@@ -801,7 +801,7 @@ const mappedEmployees: Employee[] = dataRows
       .trim()
       .replace(/\D/g, "");
 
-    const employmentDate = formatExcelDate(row[10]);
+const employmentDate = formatExcelDate(row[10]);
 
 const effectiveDate =
   calculateEffectiveDate(employmentDate);
@@ -809,11 +809,27 @@ const effectiveDate =
 const resignationDate =
   formatExcelDate(row[20]);
 
+console.log("🔴 RESIGNATION DEBUG", {
+  employeeCode,
+  name: `${firstName} ${lastName}`,
+  rawResignationValue: row[20],
+  resignationDate,
+});
+
 console.log(
   "📅 วันที่เริ่มงาน:",
   employmentDate
 );
 
+console.log(
+  "📅 วันที่มีผลประกัน (+119 วัน):",
+  effectiveDate
+);
+
+console.log(
+  "📅 ประเภทปี:",
+  getInsuranceType(effectiveDate)
+);
 console.log(
   "📅 วันที่มีผลประกัน (+119 วัน):",
   effectiveDate
@@ -920,6 +936,29 @@ const uniqueEmployees =
   Array.from(employeeMap.values());
 
 console.log(
+  "🔴 จำนวนคนที่เป็นลาออก:",
+  uniqueEmployees.filter(
+    (employee) => employee.status === "ลาออก"
+  ).length
+);
+
+console.log(
+  "🟢 จำนวนคนที่เป็นมีผลประกัน:",
+  uniqueEmployees.filter(
+    (employee) => employee.status === "มีผลประกัน"
+  ).length
+);
+
+console.log(
+  "🔴 ตัวอย่างข้อมูลคนที่ถูกมองว่าลาออก:",
+  uniqueEmployees
+    .filter(
+      (employee) => employee.status === "ลาออก"
+    )
+    .slice(0, 20)
+);
+
+console.log(
   "ข้อมูลหลังรวมพนักงานซ้ำ:",
   uniqueEmployees
 );
@@ -933,7 +972,6 @@ console.log(
   "จำนวนพนักงานหลังรวม:",
   uniqueEmployees.length
 );
-
 setEmployees(uniqueEmployees);
 setRowCount(uniqueEmployees.length);
 
