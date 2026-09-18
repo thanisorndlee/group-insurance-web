@@ -815,76 +815,62 @@ console.log(
   employmentDate
 );
 
-console.log(
-  "📅 วันที่มีผลประกัน (+119 วัน):",
-  effectiveDate
-);
+console.log("📅 วันที่เริ่มงาน:", employmentDate);
+console.log("📅 วันที่มีผลประกัน (+119 วัน):", effectiveDate);
+console.log("📅 ประเภทปี:", getInsuranceType(effectiveDate));
 
-console.log(
-  "📅 ประเภทปี:",
-  getInsuranceType(effectiveDate)
-);
-console.log(
-  "📅 วันที่มีผลประกัน (+119 วัน):",
-  effectiveDate
-);
 
-console.log(
-  "📅 ประเภทปี:",
-  getInsuranceType(effectiveDate)
-);
+return {
+  employee_key: createEmployeeKey(
+    vendor,
+    employeeCode,
+    firstName,
+    lastName,
+    idCard,
+    effectiveDate
+  ),
 
-    return {
-      employee_key: createEmployeeKey(
-        vendor,
-        employeeCode,
-        firstName,
-        lastName,
-        idCard,
-        effectiveDate
-      ),
+  employee_code: employeeCode,
+  vendor,
+  branch: "",
+  title,
+  first_name: firstName,
+  last_name: lastName,
+  gender: String(row[7] ?? "").trim(),
 
-      employee_code: employeeCode,
-      vendor,
-      branch: "",
-      title,
-      first_name: firstName,
-      last_name: lastName,
-      gender: String(row[7] ?? "").trim(),
+  date_of_birth: formatExcelDate(row[8]),
+  id_card: idCard,
 
-      date_of_birth: formatExcelDate(row[8]),
-      id_card: idCard,
+  employment_date: employmentDate,
+  effective_date: effectiveDate,
 
-      employment_date: employmentDate,
-      effective_date: effectiveDate,
+  plan:
+    row[12] !== "" &&
+    row[12] !== null &&
+    row[12] !== undefined
+      ? Number(row[12])
+      : null,
 
-      plan:
-        row[12] !== "" &&
-        row[12] !== null &&
-        row[12] !== undefined
-          ? Number(row[12])
-          : null,
+  insurance_type: getInsuranceType(effectiveDate),
 
-      insurance_type: getInsuranceType(effectiveDate),
+  department: "",
+  bank_account: "",
+  bank_name: "",
+  phone: "",
 
-      department: "",
-      bank_account: "",
-      bank_name: "",
-      phone: "",
+  remark: String(row[19] ?? "").trim(),
 
-      remark: String(row[19] ?? "").trim(),
+  resignation_date: resignationDate,
 
-      resignation_date: resignationDate,
+  status:
+    resignationDate !== null &&
+    resignationDate !== ""
+      ? "ลาออก"
+      : "มีผลประกัน",
 
-      status:
-        resignationDate !== null &&
-        resignationDate !== ""
-          ? "ลาออก"
-          : "มีผลประกัน",
-
-      insurance_card_no: "",
-      life_plan: "",
-    };
+  insurance_card_no: "",
+  life_plan: "",
+};
       });
 
 // =========================
