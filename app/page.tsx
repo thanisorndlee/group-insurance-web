@@ -622,6 +622,7 @@ console.log(
 const [inFileName, setInFileName] = useState("");
 const [inRowCount, setInRowCount] = useState<number | null>(null);
 const [inPreview, setInPreview] = useState<Employee[]>([]);
+const [inAllEmployees, setInAllEmployees] = useState<Employee[]>([]);
 const [isInLoading, setIsInLoading] = useState(false);
 const [isInImporting, setIsInImporting] = useState(false);
 const [inNewCount, setInNewCount] = useState<number | null>(null);
@@ -1256,6 +1257,7 @@ const effectiveDate =
         mappedEmployees
       );
 
+      setInAllEmployees(mappedEmployees);
       // ==========================================
       // ตรวจสอบพนักงานที่มีอยู่แล้ว
       // ใช้เลขบัตรประชาชนเป็นตัวตรวจสอบ
@@ -1371,6 +1373,79 @@ const handleImportInToSupabase = async () => {
 // เตรียมข้อมูลพนักงานใหม่สำหรับบันทึก
 // ==========================================
 const newEmployees = inPreview;
+
+// ==========================================
+// เติมวันที่เริ่มงานจากไฟล์แจ้งเข้า
+// ให้กับพนักงานที่มีอยู่แล้วใน Master
+// ==========================================
+const currentEmployees = await loadAllEmployees();
+
+const employeeMap = new Map<string, Employee>();
+
+currentEmployees.forEach((employee) => {
+  const code = String(employee.employee_code ?? "")
+    .trim()
+    .replace(/\s+/g, "")
+    .toUpperCase();
+
+  if (code) {
+    employeeMap.set(code, employee);
+  }
+});
+
+let updatedEmploymentCount = 0;
+
+for (const inEmployee of inAllEmployees) {
+  const code = String(inEmployee.employee_code ?? "")
+    .trim()
+    .replace(/\s+/g, "")
+    .toUpperCase();
+
+  const masterEmployee = employeeMap.get(code);
+
+  if (!masterEmployee) continue;
+
+  // เติมเฉพาะกรณี Master ไม่มีวันที่เริ่มงาน
+  if (
+    !masterEmployee.employment_date &&
+    inEmployee.employment_date
+  ) {
+    const effectiveDate = calculateEffectiveDate(
+      inEmployee.employment_date
+    );
+
+    const insuranceType =
+      getInsuranceType(effectiveDate);
+
+    const { error } = await supabase
+      .from("employees")
+      .update({
+        employment_date:
+          inEmployee.employment_date,
+        effective_date:
+          effectiveDate,
+        insurance_type:
+          insuranceType,
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq("id", masterEmployee.id);
+
+    if (error) {
+      throw new Error(
+        `อัปเดตวันที่เริ่มงาน ${code} ไม่สำเร็จ: ${error.message}`
+      );
+    }
+
+    updatedEmploymentCount++;
+  }
+}
+
+console.log(
+  "📅 เติมวันที่เริ่มงานจากแจ้งเข้า:",
+  updatedEmploymentCount,
+  "คน"
+);
 
 console.log(
   "📥 จำนวนพนักงานใหม่ที่จะบันทึก:",
