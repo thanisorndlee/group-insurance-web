@@ -898,22 +898,52 @@ for (const employee of mappedEmployees) {
     continue;
   }
 
-  // ถ้าแถวใหม่เป็นข้อมูลลาออก
-  if (
-    employee.resignation_date &&
-    !existing.resignation_date
-  ) {
-    employeeMap.set(idCard, {
-      ...existing,
-      resignation_date:
-        employee.resignation_date,
-      status: "ลาออก",
-    });
-  }
+  // ถ้าเจอข้อมูลซ้ำ ให้เติมข้อมูลที่ขาดจากแถวใหม่
+if (existing) {
+  employeeMap.set(idCard, {
+    ...existing,
+
+    employment_date:
+      existing.employment_date ||
+      employee.employment_date,
+
+    effective_date:
+      existing.effective_date ||
+      employee.effective_date,
+
+    insurance_type:
+      existing.insurance_type ||
+      employee.insurance_type,
+
+    plan:
+      existing.plan ?? employee.plan,
+
+    // ถ้ามีวันที่ลาออก ให้ถือว่าลาออก
+    resignation_date:
+      employee.resignation_date ||
+      existing.resignation_date,
+
+    status:
+      employee.resignation_date ||
+      existing.resignation_date
+        ? "ลาออก"
+        : existing.status,
+  });
+}
 }
 
 const uniqueEmployees =
   Array.from(employeeMap.values());
+  console.log(
+  "🔎 ตรวจ effective_date / insurance_type:",
+  uniqueEmployees.slice(0, 20).map((employee) => ({
+    name: `${employee.first_name} ${employee.last_name}`,
+    employment_date: employee.employment_date,
+    effective_date: employee.effective_date,
+    insurance_type: employee.insurance_type,
+    status: employee.status,
+  }))
+);
 
 const resignedCount = uniqueEmployees.filter(
   (employee) => employee.status === "ลาออก"
