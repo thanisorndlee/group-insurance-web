@@ -1161,8 +1161,11 @@ const handleInFileUpload = (
             .trim()
             .replace(/\D/g, "");
 
-          const effectiveDate =
-            formatExcelDate(row[10]);
+          const employmentDate =
+  formatExcelDate(row[9]);
+
+const effectiveDate =
+  calculateEffectiveDate(employmentDate);
 
           return {
             employee_key: createEmployeeKey(
@@ -1198,7 +1201,7 @@ const handleInFileUpload = (
             id_card: idCard,
 
             employment_date:
-              formatExcelDate(row[9]),
+              employmentDate,
 
             effective_date:
               effectiveDate,
