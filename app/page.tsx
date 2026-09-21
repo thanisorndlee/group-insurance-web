@@ -2665,20 +2665,19 @@ mappedEmployees.forEach((insuranceEmployee) => {
   matched.push({
     ...masterEmployee,
 
-    plan:
-      insuranceEmployee.plan,
+    // วันที่มีผลประกันจริงจากไฟล์ประกันส่งกลับ
+    effective_date: insuranceEmployee.effective_date,
 
-    status:
-      insuranceEmployee.status,
+    // ประเภทปีประกัน ดูจากวันที่มีผลจริง
+    insurance_type: getInsuranceType(
+      insuranceEmployee.effective_date
+    ),
 
-    resignation_date:
-      insuranceEmployee.resignation_date,
+    plan: insuranceEmployee.plan,
 
-    insurance_card_no:
-      insuranceEmployee.insurance_card_no,
+    insurance_card_no: insuranceEmployee.insurance_card_no,
 
-    life_plan:
-      insuranceEmployee.life_plan,
+    life_plan: insuranceEmployee.life_plan,
   });
 } else {
   unmatched.push(insuranceEmployee);
@@ -2778,6 +2777,8 @@ const handleImportInsuranceToSupabase = async () => {
           const { error } = await supabase
             .from("employees")
             .update({
+            effective_date: employee.effective_date,
+            insurance_type: employee.insurance_type,
             plan: employee.plan,
             insurance_card_no: employee.insurance_card_no,
             life_plan: employee.life_plan,
