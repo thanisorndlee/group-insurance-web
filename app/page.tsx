@@ -716,7 +716,14 @@ try {
 ) => {
   const file = event.target.files?.[0];
 
-  if (!file) return;
+  console.log("📂 FILE ที่เลือก:", file);
+
+  if (!file) {
+    console.log("❌ ไม่มีไฟล์ถูกเลือก");
+    return;
+  }
+
+  setFileName(file.name);
 
   setFileName(file.name);
   setError("");
@@ -3214,12 +3221,15 @@ try {
             </label>
 
             <input
-              id="excel-upload"
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={handleFileUpload}
-              className="hidden"
-            />
+  id="excel-upload"
+  type="file"
+  accept=".xlsx,.xls"
+  onChange={(e) => {
+    console.log("🟢 INPUT FILE ทำงานแล้ว");
+    handleFileUpload(e);
+  }}
+  className="hidden"
+/>
           </div>
 
           {/* File Status */}
