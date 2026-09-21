@@ -3247,7 +3247,7 @@ try {
                 </div>
               )}
               {/* Save Button */}
-{!isLoading && rowCount !== null && (
+{!isLoading && fileName && (
   <button
     type="button"
     onClick={handleImportToSupabase}
