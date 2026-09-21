@@ -3247,7 +3247,7 @@ try {
                 </div>
               )}
               {/* Save Button */}
-{!isLoading && rowCount !== null && (
+{!isLoading && employees.length > 0 && (
   <button
     type="button"
     onClick={() => {
