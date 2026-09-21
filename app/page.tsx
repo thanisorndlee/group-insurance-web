@@ -3247,7 +3247,7 @@ try {
                 </div>
               )}
               {/* Save Button */}
-{!isLoading && employees.length > 0 && (
+{!isLoading && rowCount !== null && (
   <button
     type="button"
     onClick={handleImportToSupabase}
