@@ -192,28 +192,23 @@ const createEmployeeKey = (
   employeeCode: string,
   firstName: string,
   lastName: string,
-  idCard: string,
-  effectiveDate: string | null
+  idCard: string
 ) => {
   const cleanVendor = normalizeText(vendor);
   const cleanCode = normalizeText(employeeCode);
   const cleanFirstName = normalizeText(firstName);
   const cleanLastName = normalizeText(lastName);
   const cleanIdCard = normalizeText(idCard);
-  const cleanEffectiveDate = normalizeText(effectiveDate);
 
-  // ถ้ามีรหัสพนักงาน + วันที่มีผล
   if (cleanCode) {
-    return `${cleanVendor}|code|${cleanCode}|effective|${cleanEffectiveDate}`;
+    return `${cleanVendor}|code|${cleanCode}`;
   }
 
-  // ถ้าไม่มีรหัสพนักงาน แต่มีบัตรประชาชน
   if (cleanIdCard) {
-    return `${cleanVendor}|id|${cleanIdCard}|effective|${cleanEffectiveDate}`;
+    return `${cleanVendor}|id|${cleanIdCard}`;
   }
 
-  // ถ้าไม่มีทั้งรหัสและบัตรประชาชน
-  return `${cleanVendor}|name|${cleanFirstName}|${cleanLastName}|effective|${cleanEffectiveDate}`;
+  return `${cleanVendor}|name|${cleanFirstName}|${cleanLastName}`;
 };
 // =========================
 // ค่าเบี้ยประกันตามแผน
@@ -798,8 +793,8 @@ const mappedEmployees: Employee[] = dataRows
 
 const employmentDate = formatExcelDate(row[10]);
 
-const effectiveDate =
-  calculateEffectiveDate(employmentDate);
+// วันที่มีผลประกันจริงจะมาจากไฟล์ประกันส่งกลับ
+const effectiveDate: string | null = null;
 
 const resignationDate =
   formatExcelDate(row[20]);
@@ -823,13 +818,12 @@ console.log("📅 ประเภทปี:", getInsuranceType(effectiveDate));
 
 return {
   employee_key: createEmployeeKey(
-    vendor,
-    employeeCode,
-    firstName,
-    lastName,
-    idCard,
-    effectiveDate
-  ),
+  vendor,
+  employeeCode,
+  firstName,
+  lastName,
+  idCard
+),
 
   employee_code: employeeCode,
   vendor,
@@ -1165,18 +1159,16 @@ const handleInFileUpload = (
           const employmentDate =
   formatExcelDate(row[9]);
 
-const effectiveDate =
-  calculateEffectiveDate(employmentDate);
+const effectiveDate: string | null = null;
 
           return {
             employee_key: createEmployeeKey(
-              vendor,
-              employeeCode,
-              firstName,
-              lastName,
-              idCard,
-              effectiveDate
-            ),
+            vendor,
+            employeeCode,
+            firstName,
+            lastName,
+            idCard
+          ),
 
             employee_code: employeeCode,
 
@@ -1215,12 +1207,7 @@ const effectiveDate =
                 : null,
 
             insurance_type:
-            effectiveDate &&
-            effectiveDate.endsWith("-01-01")
-              ? "เต็มปี"
-              : effectiveDate
-              ? "ไม่เต็มปี"
-              : "",
+            getInsuranceType(effectiveDate),
 
             department: String(
               row[12] ?? ""
@@ -1407,38 +1394,28 @@ for (const inEmployee of inAllEmployees) {
 
   // เติมเฉพาะกรณี Master ไม่มีวันที่เริ่มงาน
   if (
-    !masterEmployee.employment_date &&
-    inEmployee.employment_date
-  ) {
-    const effectiveDate = calculateEffectiveDate(
-      inEmployee.employment_date
+  !masterEmployee.employment_date &&
+  inEmployee.employment_date
+) {
+  const { error } = await supabase
+    .from("employees")
+    .update({
+      employment_date:
+        inEmployee.employment_date,
+
+      updated_at:
+        new Date().toISOString(),
+    })
+    .eq("id", masterEmployee.id);
+
+  if (error) {
+    throw new Error(
+      `อัปเดตวันที่เริ่มงาน ${code} ไม่สำเร็จ: ${error.message}`
     );
-
-    const insuranceType =
-      getInsuranceType(effectiveDate);
-
-    const { error } = await supabase
-      .from("employees")
-      .update({
-        employment_date:
-          inEmployee.employment_date,
-        effective_date:
-          effectiveDate,
-        insurance_type:
-          insuranceType,
-        updated_at:
-          new Date().toISOString(),
-      })
-      .eq("id", masterEmployee.id);
-
-    if (error) {
-      throw new Error(
-        `อัปเดตวันที่เริ่มงาน ${code} ไม่สำเร็จ: ${error.message}`
-      );
-    }
-
-    updatedEmploymentCount++;
   }
+
+  updatedEmploymentCount++;
+}
 }
 
 console.log(
@@ -2777,13 +2754,13 @@ const handleImportInsuranceToSupabase = async () => {
           const { error } = await supabase
             .from("employees")
             .update({
-            effective_date: employee.effective_date,
-            insurance_type: employee.insurance_type,
-            plan: employee.plan,
-            insurance_card_no: employee.insurance_card_no,
-            life_plan: employee.life_plan,
-            updated_at: new Date().toISOString(),
-          })
+          effective_date: employee.effective_date,
+          insurance_type: employee.insurance_type,
+          plan: employee.plan,
+          insurance_card_no: employee.insurance_card_no,
+          life_plan: employee.life_plan,
+          updated_at: new Date().toISOString(),
+        })
             .eq("id", employee.id);
 
           if (error) {
@@ -2869,13 +2846,12 @@ const handleImportToSupabase = async () => {
 
       employee_code: employeeCode,
 
-      employee_key: createEmployeeKey(
+  employee_key: createEmployeeKey(
   vendor,
   employeeCode,
   firstName,
   lastName,
-  idCard,
-  employee.effective_date
+  idCard
 ),
     };
   })
@@ -2974,84 +2950,184 @@ throw new Error(
       "================================="
     );
 
+// ==========================================
+// 5. แบ่งข้อมูลเป็นชุดละ 500
+// ==========================================
+const chunkSize = 500;
 
-    // ==========================================
-    // 5. แบ่งข้อมูลเป็นชุดละ 500
-    // ==========================================
-    const chunkSize = 500;
+let totalImported = 0;
 
-    let totalImported = 0;
+for (
+  let i = 0;
+  i < uniqueEmployees.length;
+  i += chunkSize
+) {
 
+  const chunk =
+    uniqueEmployees.slice(
+      i,
+      i + chunkSize
+    );
 
-    for (
-      let i = 0;
-      i < uniqueEmployees.length;
-      i += chunkSize
-    ) {
+  console.log(
+    `กำลังบันทึก ${
+      i + 1
+    } - ${
+      i + chunk.length
+    } / ${
+      uniqueEmployees.length
+    }`
+  );
 
-      const chunk =
-        uniqueEmployees.slice(
-          i,
-          i + chunkSize
-        );
+  for (const employee of chunk) {
 
+    // ------------------------------------------
+    // ตรวจว่ามีพนักงานนี้อยู่ใน Database แล้วไหม
+    // ------------------------------------------
+    const {
+      data: existingEmployee,
+      error: findError,
+    } = await supabase
+      .from("employees")
+      .select("id")
+      .eq(
+        "employee_key",
+        employee.employee_key
+      )
+      .maybeSingle();
 
-      console.log(
-        `กำลังบันทึก ${
-          i + 1
-        } - ${
-          i + chunk.length
-        } / ${
-          uniqueEmployees.length
+    if (findError) {
+      throw new Error(
+        `ตรวจสอบพนักงาน ${
+          employee.employee_code
+        } ไม่สำเร็จ: ${
+          findError.message
         }`
       );
+    }
 
+    // ------------------------------------------
+    // ถ้ามีอยู่แล้ว → UPDATE
+    // ------------------------------------------
+    if (existingEmployee) {
 
-      // ========================================
-      // ใช้ employee_key เป็นตัวหลัก
-      // ========================================
-      const {
-        error
-      } = await supabase
-        .from("employees")
-        .upsert(
-          chunk,
-          {
-            onConflict:
-              "employee_key",
-          }
-        );
+      const { error: updateError } =
+        await supabase
+          .from("employees")
+          .update({
+            employee_code:
+              employee.employee_code,
 
+            vendor:
+              employee.vendor,
 
-      if (error) {
+            branch:
+              employee.branch,
 
-        console.error(
-          "Supabase Error:",
-          error
-        );
+            title:
+              employee.title,
 
+            first_name:
+              employee.first_name,
+
+            last_name:
+              employee.last_name,
+
+            gender:
+              employee.gender,
+
+            date_of_birth:
+              employee.date_of_birth,
+
+            id_card:
+              employee.id_card,
+
+            // วันที่เริ่มงานมาจาก Master
+            employment_date:
+              employee.employment_date,
+
+            plan:
+              employee.plan,
+
+            department:
+              employee.department,
+
+            bank_account:
+              employee.bank_account,
+
+            bank_name:
+              employee.bank_name,
+
+            phone:
+              employee.phone,
+
+            remark:
+              employee.remark,
+
+            resignation_date:
+              employee.resignation_date,
+
+            status:
+              employee.status,
+
+            // ไม่แตะ:
+            // effective_date
+            // insurance_type
+            // insurance_card_no
+            // life_plan
+            //
+            // เพราะข้อมูลพวกนี้มาจาก
+            // "ไฟล์ประกันส่งกลับ"
+
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq(
+            "id",
+            existingEmployee.id
+          );
+
+      if (updateError) {
         throw new Error(
-          `บันทึกข้อมูลชุดที่ ${
-            Math.floor(
-              i / chunkSize
-            ) + 1
+          `อัปเดตพนักงาน ${
+            employee.employee_code
           } ไม่สำเร็จ: ${
-            error.message
+            updateError.message
           }`
         );
       }
 
+    } else {
 
-      totalImported +=
-        chunk.length;
+      // ------------------------------------------
+      // ถ้ายังไม่มี → INSERT
+      // ------------------------------------------
+      const { error: insertError } =
+        await supabase
+          .from("employees")
+          .insert(employee);
+
+      if (insertError) {
+        throw new Error(
+          `เพิ่มพนักงาน ${
+            employee.employee_code
+          } ไม่สำเร็จ: ${
+            insertError.message
+          }`
+        );
+      }
     }
 
-    console.log(
-    "✅ INSERT สำเร็จ:",
-    totalImported,
-    "รายการ"
-  );
+    totalImported++;
+  }
+}
 
+console.log(
+  "✅ บันทึกข้อมูลสำเร็จ:",
+  totalImported,
+  "รายการ"
+);
+    
     // ==========================================
     // 6. โหลดข้อมูลใหม่จาก Database
     // ==========================================
