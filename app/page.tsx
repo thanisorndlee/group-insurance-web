@@ -3261,7 +3261,7 @@ try {
   <button
     type="button"
     onClick={handleImportToSupabase}
-    disabled={isImporting}
+    disabled={false}
     className="mt-4 inline-flex items-center rounded-xl bg-green-600 px-5 py-3 font-medium text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-70"
   >
     {isImporting ? (
