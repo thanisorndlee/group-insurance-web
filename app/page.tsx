@@ -3945,71 +3945,75 @@ try {
 
     <table className="w-full text-left">
 
-      <thead className="bg-slate-50 text-sm text-slate-500">
-        <tr>
+    <thead className="bg-slate-50 text-sm text-slate-600">
+  <tr className="border-b border-slate-200">
 
-          <th className="px-6 py-4">
-            Vendor
-          </th>
+    <th className="w-[120px] px-4 py-3 text-center font-semibold whitespace-nowrap">
+      Vendor
+    </th>
 
-          <th className="px-6 py-4">
-            ลำดับ
-          </th>
+    <th className="w-[70px] px-4 py-3 text-center font-semibold whitespace-nowrap">
+      ลำดับ
+    </th>
 
-          <th className="px-6 py-4">
-            ชื่อ
-          </th>
+    <th className="w-[180px] px-4 py-3 text-left font-semibold whitespace-nowrap">
+      ชื่อ
+    </th>
 
-          <th className="px-6 py-4">
-            แผน
-          </th>
+    <th className="w-[70px] px-4 py-3 text-center font-semibold whitespace-nowrap">
+      แผน
+    </th>
 
-          <th className="px-6 py-4">
-            ประเภทปี
-          </th>
+    <th className="w-[90px] px-4 py-3 text-center font-semibold">
+      ประเภทปี
+    </th>
 
-          <th className="px-6 py-4">
-            มีผลประกัน
-          </th>
+    <th className="w-[110px] px-4 py-3 text-center font-semibold">
+      มีผลประกัน
+    </th>
 
-          <th className="px-6 py-4">
-            ลาออก
-          </th>
+    <th className="w-[100px] px-4 py-3 text-center font-semibold">
+      ลาออก
+    </th>
 
-          <th className="px-6 py-4">
-            สถานะ
-          </th>
+    <th className="w-[110px] px-4 py-3 text-center font-semibold">
+      สถานะ
+    </th>
 
-          <th className="px-6 py-4">
-            อยู่มาแล้วกี่วัน
-          </th>
+    <th className="w-[120px] px-4 py-3 text-center font-semibold">
+      <span className="block">อยู่มาแล้ว</span>
+      <span className="block">กี่วัน</span>
+    </th>
 
-          <th className="px-6 py-4">
-            ค่าเบี้ยต่อคน
-          </th>
+    <th className="w-[110px] px-4 py-3 text-center font-semibold">
+      <span className="block">ค่าเบี้ย</span>
+      <span className="block">ต่อคน</span>
+    </th>
 
-          <th className="px-6 py-4">
-            ค่าเบี้ยต่อวัน
-          </th>
+    <th className="w-[110px] px-4 py-3 text-center font-semibold">
+      <span className="block">ค่าเบี้ย</span>
+      <span className="block">ต่อวัน</span>
+    </th>
 
-          <th className="px-6 py-4">
-            OPD
-          </th>
+    <th className="w-[80px] px-4 py-3 text-center font-semibold whitespace-nowrap">
+      OPD
+    </th>
 
-          <th className="px-6 py-4">
-            IPD
-          </th>
+    <th className="w-[80px] px-4 py-3 text-center font-semibold whitespace-nowrap">
+      IPD
+    </th>
 
-          <th className="px-6 py-4">
-            หมายเลขบัตร
-          </th>
+    <th className="w-[130px] px-4 py-3 text-center font-semibold">
+      <span className="block">หมายเลข</span>
+      <span className="block">บัตร</span>
+    </th>
 
-          <th className="px-6 py-4">
-            ครั้ง
-          </th>
+    <th className="w-[70px] px-4 py-3 text-center font-semibold whitespace-nowrap">
+      ครั้ง
+    </th>
 
-        </tr>
-      </thead>
+  </tr>
+</thead> 
 
       <tbody>
 
@@ -4185,9 +4189,7 @@ const claimSummary =
         )}
 
       </tbody>
-
     </table>
-
   </div>
 </div>
 </div>
