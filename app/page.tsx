@@ -2957,176 +2957,188 @@ throw new Error(
       "================================="
     );
 
+    // ==========================================
+// 5. บันทึกข้อมูลเป็นชุดละ 500
 // ==========================================
-// 5. แบ่งข้อมูลเป็นชุดละ 500
-// ==========================================
+
+// โหลดข้อมูลที่มีอยู่ใน Database ครั้งเดียว
+const currentEmployees =
+  await loadAllEmployees();
+
+console.log(
+  "📦 ข้อมูลเดิมใน Database:",
+  currentEmployees.length,
+  "รายการ"
+);
+
+// สร้าง Map จาก employee_key
+const currentEmployeeMap =
+  new Map<string, Employee>();
+
+currentEmployees.forEach((employee) => {
+  if (employee.employee_key) {
+    currentEmployeeMap.set(
+      employee.employee_key,
+      employee
+    );
+  }
+});
+
+// เตรียมข้อมูลสำหรับ Upsert
+const rowsToUpsert =
+  uniqueEmployees.map((employee) => {
+
+    const existingEmployee =
+      employee.employee_key
+        ? currentEmployeeMap.get(
+            employee.employee_key
+          )
+        : undefined;
+
+    return {
+      // ถ้ามีข้อมูลเดิม → ใช้ id เดิม
+      ...(existingEmployee?.id
+        ? {
+            id: existingEmployee.id,
+          }
+        : {}),
+
+      employee_key:
+        employee.employee_key,
+
+      employee_code:
+        employee.employee_code,
+
+      vendor:
+        employee.vendor,
+
+      branch:
+        employee.branch,
+
+      title:
+        employee.title,
+
+      first_name:
+        employee.first_name,
+
+      last_name:
+        employee.last_name,
+
+      gender:
+        employee.gender,
+
+      date_of_birth:
+        employee.date_of_birth,
+
+      id_card:
+        employee.id_card,
+
+      // Master เป็นเจ้าของวันที่เริ่มงาน
+      employment_date:
+        employee.employment_date,
+
+      plan:
+        employee.plan,
+
+      department:
+        employee.department,
+
+      bank_account:
+        employee.bank_account,
+
+      bank_name:
+        employee.bank_name,
+
+      phone:
+        employee.phone,
+
+      remark:
+        employee.remark,
+
+      resignation_date:
+        employee.resignation_date,
+
+      status:
+        employee.status,
+
+      // ==========================================
+      // ข้อมูลจากไฟล์ประกันส่งกลับ
+      // ถ้ามีอยู่แล้ว ให้เก็บค่าเดิมไว้
+      // ==========================================
+
+      effective_date:
+        existingEmployee?.effective_date ??
+        employee.effective_date,
+
+      insurance_type:
+        existingEmployee?.insurance_type ??
+        employee.insurance_type,
+
+      insurance_card_no:
+        existingEmployee?.insurance_card_no ??
+        employee.insurance_card_no,
+
+      life_plan:
+        existingEmployee?.life_plan ??
+        employee.life_plan,
+
+      updated_at:
+        new Date().toISOString(),
+    };
+  });
+
+console.log(
+  "📦 จำนวนข้อมูลที่จะ Upsert:",
+  rowsToUpsert.length
+);
+
 const chunkSize = 500;
 
 let totalImported = 0;
 
 for (
   let i = 0;
-  i < uniqueEmployees.length;
+  i < rowsToUpsert.length;
   i += chunkSize
 ) {
 
   const chunk =
-    uniqueEmployees.slice(
+    rowsToUpsert.slice(
       i,
       i + chunkSize
     );
 
   console.log(
-    `กำลังบันทึก ${
+    `💾 กำลังบันทึก ${
       i + 1
     } - ${
       i + chunk.length
     } / ${
-      uniqueEmployees.length
+      rowsToUpsert.length
     }`
   );
 
-  for (const employee of chunk) {
-
-    // ------------------------------------------
-    // ตรวจว่ามีพนักงานนี้อยู่ใน Database แล้วไหม
-    // ------------------------------------------
-    const {
-      data: existingEmployee,
-      error: findError,
-    } = await supabase
+  const { error } =
+    await supabase
       .from("employees")
-      .select("id")
-      .eq(
-        "employee_key",
-        employee.employee_key
-      )
-      .maybeSingle();
+      .upsert(chunk);
 
-    if (findError) {
-      throw new Error(
-        `ตรวจสอบพนักงาน ${
-          employee.employee_code
-        } ไม่สำเร็จ: ${
-          findError.message
-        }`
-      );
-    }
+  if (error) {
 
-    // ------------------------------------------
-    // ถ้ามีอยู่แล้ว → UPDATE
-    // ------------------------------------------
-    if (existingEmployee) {
+    console.error(
+      "❌ Supabase Upsert Error:",
+      error
+    );
 
-      const { error: updateError } =
-        await supabase
-          .from("employees")
-          .update({
-            employee_code:
-              employee.employee_code,
-
-            vendor:
-              employee.vendor,
-
-            branch:
-              employee.branch,
-
-            title:
-              employee.title,
-
-            first_name:
-              employee.first_name,
-
-            last_name:
-              employee.last_name,
-
-            gender:
-              employee.gender,
-
-            date_of_birth:
-              employee.date_of_birth,
-
-            id_card:
-              employee.id_card,
-
-            // วันที่เริ่มงานมาจาก Master
-            employment_date:
-              employee.employment_date,
-
-            plan:
-              employee.plan,
-
-            department:
-              employee.department,
-
-            bank_account:
-              employee.bank_account,
-
-            bank_name:
-              employee.bank_name,
-
-            phone:
-              employee.phone,
-
-            remark:
-              employee.remark,
-
-            resignation_date:
-              employee.resignation_date,
-
-            status:
-              employee.status,
-
-            // ไม่แตะ:
-            // effective_date
-            // insurance_type
-            // insurance_card_no
-            // life_plan
-            //
-            // เพราะข้อมูลพวกนี้มาจาก
-            // "ไฟล์ประกันส่งกลับ"
-
-            updated_at:
-              new Date().toISOString(),
-          })
-          .eq(
-            "id",
-            existingEmployee.id
-          );
-
-      if (updateError) {
-        throw new Error(
-          `อัปเดตพนักงาน ${
-            employee.employee_code
-          } ไม่สำเร็จ: ${
-            updateError.message
-          }`
-        );
-      }
-
-    } else {
-
-      // ------------------------------------------
-      // ถ้ายังไม่มี → INSERT
-      // ------------------------------------------
-      const { error: insertError } =
-        await supabase
-          .from("employees")
-          .insert(employee);
-
-      if (insertError) {
-        throw new Error(
-          `เพิ่มพนักงาน ${
-            employee.employee_code
-          } ไม่สำเร็จ: ${
-            insertError.message
-          }`
-        );
-      }
-    }
-
-    totalImported++;
+    throw new Error(
+      `บันทึกข้อมูลพนักงานไม่สำเร็จ: ${
+        error.message
+      }`
+    );
   }
+
+  totalImported +=
+    chunk.length;
 }
 
 console.log(
