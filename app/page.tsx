@@ -3440,6 +3440,134 @@ try {
 
   </div>
 )}
+{/* =========================
+    Modal ดูรายชื่อแจ้งเข้า
+========================= */}
+{showInNames && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+
+    <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+
+      {/* หัวหน้าต่าง */}
+      <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+
+        <div>
+          <h3 className="text-lg font-bold text-slate-900">
+            รายชื่อพนักงานแจ้งเข้า
+          </h3>
+
+          <p className="mt-1 text-sm text-slate-500">
+            {inNameTab === "new"
+              ? `พนักงานใหม่ ${inNewEmployees.length.toLocaleString()} คน`
+              : `มีอยู่แล้วในข้อมูลตั้งต้น ${inExistingEmployees.length.toLocaleString()} คน`}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowInNames(false)}
+          className="rounded-lg px-3 py-2 text-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+        >
+          ✕
+        </button>
+
+      </div>
+
+
+      {/* เลือกกลุ่มรายชื่อ */}
+      <div className="flex gap-2 border-b border-slate-200 px-6 py-4">
+
+        <button
+          type="button"
+          onClick={() => setInNameTab("new")}
+          className={`rounded-lg px-4 py-2 text-sm font-medium ${
+            inNameTab === "new"
+              ? "bg-[#7ED957] text-white"
+              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+          }`}
+        >
+          พนักงานใหม่ {inNewEmployees.length} คน
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setInNameTab("existing")}
+          className={`rounded-lg px-4 py-2 text-sm font-medium ${
+            inNameTab === "existing"
+              ? "bg-slate-600 text-white"
+              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+          }`}
+        >
+          มีอยู่แล้ว {inExistingEmployees.length} คน
+        </button>
+
+      </div>
+
+
+      {/* รายชื่อ */}
+      <div className="max-h-[60vh] overflow-y-auto px-6 py-3">
+
+        {(inNameTab === "new"
+          ? inNewEmployees
+          : inExistingEmployees
+        ).map((employee, index) => (
+
+          <div
+            key={`${employee.employee_code}-${index}`}
+            className="flex items-center justify-between border-b border-slate-100 py-3"
+          >
+
+            <div>
+              <div className="font-medium text-slate-800">
+                {employee.title}
+                {employee.first_name} {employee.last_name}
+              </div>
+
+              <div className="mt-1 text-xs text-slate-400">
+                รหัสพนักงาน: {employee.employee_code}
+                {employee.vendor
+                  ? ` • ${employee.vendor}`
+                  : ""}
+              </div>
+            </div>
+
+            <div className="text-sm text-slate-400">
+              {index + 1}
+            </div>
+
+          </div>
+
+        ))}
+
+        {(inNameTab === "new"
+          ? inNewEmployees
+          : inExistingEmployees
+        ).length === 0 && (
+          <div className="py-10 text-center text-sm text-slate-400">
+            ไม่พบรายชื่อ
+          </div>
+        )}
+
+      </div>
+
+
+      {/* ปุ่มปิด */}
+      <div className="flex justify-end border-t border-slate-200 px-6 py-4">
+
+        <button
+          type="button"
+          onClick={() => setShowInNames(false)}
+          className="rounded-xl bg-slate-100 px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-200"
+        >
+          ปิด
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+)}
 {inSuccessMessage && (
   <p className="mt-4 font-medium text-green-600">
     ✓ {inSuccessMessage}
