@@ -3382,10 +3382,12 @@ try {
             {inRowCount.toLocaleString()} รายการ
           </p>
         )}
-        {!isInLoading && inRowCount !== null && (
+{!isInLoading && inRowCount !== null && (
   <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
 
+    {/* พนักงานใหม่ */}
     <div className="rounded-xl border border-[#7ED957]/20 bg-[#7ED957]/5 p-4">
+      
       <div className="text-xs text-gray-400">
         พนักงานใหม่
       </div>
@@ -3393,9 +3395,26 @@ try {
       <div className="mt-1 text-2xl font-black text-[#7ED957]">
         {inNewCount?.toLocaleString() ?? 0} คน
       </div>
+
+      {inNewEmployees.length > 0 && (
+        <button
+          type="button"
+          onClick={() => {
+            setInNameTab("new");
+            setShowInNames(true);
+          }}
+          className="mt-3 text-sm font-medium text-[#5fbd42] underline hover:text-[#4da832]"
+        >
+          👀 ดูรายชื่อ
+        </button>
+      )}
+
     </div>
 
+
+    {/* มีอยู่แล้วในข้อมูลตั้งต้น */}
     <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+      
       <div className="text-xs text-gray-400">
         มีอยู่แล้วในข้อมูลตั้งต้น
       </div>
@@ -3403,6 +3422,20 @@ try {
       <div className="mt-1 text-2xl font-black text-white">
         {inDuplicateCount?.toLocaleString() ?? 0} คน
       </div>
+
+      {inExistingEmployees.length > 0 && (
+        <button
+          type="button"
+          onClick={() => {
+            setInNameTab("existing");
+            setShowInNames(true);
+          }}
+          className="mt-3 text-sm font-medium text-white underline hover:text-slate-200"
+        >
+          👀 ดูรายชื่อ
+        </button>
+      )}
+
     </div>
 
   </div>
