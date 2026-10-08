@@ -435,6 +435,12 @@ export default function Home() {
   const [showInNames, setShowInNames] = useState(false);
 const [showOutNames, setShowOutNames] = useState(false);
   const [claims, setClaims] = useState<Claim[]>([]);
+  // รายชื่อพนักงานแจ้งเข้า แยกเป็น 2 กลุ่ม
+const [inNameTab, setInNameTab] = useState<"new" | "existing">("new");
+
+const [inNewEmployees, setInNewEmployees] = useState<Employee[]>([]);
+
+const [inExistingEmployees, setInExistingEmployees] = useState<Employee[]>([]);
   const [employeeSearchInput, setEmployeeSearchInput] = useState("");
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ทั้งหมด");
