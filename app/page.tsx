@@ -432,6 +432,8 @@ export default function Home() {
   const [rowCount, setRowCount] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [showInNames, setShowInNames] = useState(false);
+const [showOutNames, setShowOutNames] = useState(false);
   const [claims, setClaims] = useState<Claim[]>([]);
   const [employeeSearchInput, setEmployeeSearchInput] = useState("");
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState("");
