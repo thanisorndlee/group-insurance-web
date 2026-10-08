@@ -1308,6 +1308,9 @@ const effectiveDate: string | null = null;
         "พนักงานซ้ำ:",
         duplicateEmployees.length
       );
+      // เก็บรายชื่อไว้สำหรับกดดูภายหลัง
+      setInNewEmployees(newEmployees);
+      setInExistingEmployees(duplicateEmployees);
 
       setInPreview(newEmployees);
       setInRowCount(mappedEmployees.length);
