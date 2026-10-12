@@ -1107,13 +1107,13 @@ const handleInFileUpload = (
       console.log("ข้อมูลทั้งหมด:", rows);
 
       const dataRows = rows
-        .slice(4)
-        .filter((row) =>
-          row.some(
-            (cell: any) =>
-              String(cell ?? "").trim() !== ""
-          )
-        );
+  .slice(9)
+  .filter((row) =>
+    row.some(
+      (cell: any) =>
+        String(cell ?? "").trim() !== ""
+    )
+  );
 
       console.log(
         "จำนวนข้อมูลแจ้งเข้า:",
