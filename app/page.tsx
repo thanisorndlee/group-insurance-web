@@ -779,11 +779,12 @@ try {
       // ---------------------------------
       const dataRows = rows.slice(4);
 
+
 const mappedEmployees: Employee[] = dataRows
   .filter((row) => {
-    const employeeCode = String(row[3] ?? "").trim();
-    const firstName = String(row[5] ?? "").trim();
-    const lastName = String(row[6] ?? "").trim();
+    const employeeCode = String(row[2] ?? "").trim();
+    const firstName = String(row[4] ?? "").trim();
+    const lastName = String(row[5] ?? "").trim();
 
     return (
       employeeCode !== "" &&
@@ -793,95 +794,70 @@ const mappedEmployees: Employee[] = dataRows
   .map((row) => {
     const vendor = String(row[1] ?? "").trim();
 
-    const employeeCode = String(row[3] ?? "")
+    const employeeCode = String(row[2] ?? "")
       .trim()
       .replace(/\s+/g, "")
       .toUpperCase();
 
-    const title = String(row[4] ?? "").trim();
-    const firstName = String(row[5] ?? "").trim();
-    const lastName = String(row[6] ?? "").trim();
+    const title = String(row[3] ?? "").trim();
+    const firstName = String(row[4] ?? "").trim();
+    const lastName = String(row[5] ?? "").trim();
 
-    const idCard = String(row[9] ?? "")
+    const idCard = String(row[8] ?? "")
       .trim()
       .replace(/\D/g, "");
 
-const employmentDate = formatExcelDate(row[10]);
+    const employmentDate = formatExcelDate(row[9]);
 
-// วันที่มีผลประกันจริงจะมาจากไฟล์ประกันส่งกลับ
-const effectiveDate: string | null = null;
+    // วันที่มีผลประกันจริงจะมาจากไฟล์ประกันส่งกลับ
+    const effectiveDate: string | null = null;
 
-const resignationDate =
-  formatExcelDate(row[20]);
+    return {
+      employee_key: createEmployeeKey(
+        vendor,
+        employeeCode,
+        firstName,
+        lastName,
+        idCard
+      ),
 
-console.log("🔴 RESIGNATION DEBUG", {
-  employeeCode,
-  name: `${firstName} ${lastName}`,
-  rawResignationValue: row[20],
-  resignationDate,
-});
+      employee_code: employeeCode,
+      vendor,
+      branch: String(row[1] ?? "").trim(),
+      title,
+      first_name: firstName,
+      last_name: lastName,
+      gender: String(row[6] ?? "").trim(),
 
-console.log(
-  "📅 วันที่เริ่มงาน:",
-  employmentDate
-);
+      date_of_birth: formatExcelDate(row[7]),
+      id_card: idCard,
 
-console.log("📅 วันที่เริ่มงาน:", employmentDate);
-console.log("📅 วันที่มีผลประกัน (+119 วัน):", effectiveDate);
-console.log("📅 ประเภทปี:", getInsuranceType(effectiveDate));
+      employment_date: employmentDate,
+      effective_date: effectiveDate,
 
+      plan:
+        row[11] !== "" &&
+        row[11] !== null &&
+        row[11] !== undefined
+          ? Number(row[11])
+          : null,
 
-return {
-  employee_key: createEmployeeKey(
-  vendor,
-  employeeCode,
-  firstName,
-  lastName,
-  idCard
-),
+      insurance_type: getInsuranceType(effectiveDate),
 
-  employee_code: employeeCode,
-  vendor,
-  branch: "",
-  title,
-  first_name: firstName,
-  last_name: lastName,
-  gender: String(row[7] ?? "").trim(),
+      department: String(row[12] ?? "").trim(),
+      bank_account: String(row[13] ?? "").trim(),
+      bank_name: String(row[14] ?? "").trim(),
+      phone: String(row[15] ?? "").trim(),
 
-  date_of_birth: formatExcelDate(row[8]),
-  id_card: idCard,
+      remark: String(row[17] ?? "").trim(),
 
-  employment_date: employmentDate,
-  effective_date: effectiveDate,
+      resignation_date: null,
+      status: "มีผลประกัน",
 
-  plan:
-    row[12] !== "" &&
-    row[12] !== null &&
-    row[12] !== undefined
-      ? Number(row[12])
-      : null,
-
-  insurance_type: getInsuranceType(effectiveDate),
-
-  department: "",
-  bank_account: "",
-  bank_name: "",
-  phone: "",
-
-  remark: String(row[19] ?? "").trim(),
-
-  resignation_date: resignationDate,
-
-  status:
-    resignationDate !== null &&
-    resignationDate !== ""
-      ? "ลาออก"
-      : "มีผลประกัน",
-
-  insurance_card_no: "",
-  life_plan: "",
-};
-      });
+      insurance_card_no: "",
+      life_plan: "",
+    };
+  });
 
 // =========================
 // รวมข้อมูลพนักงานที่มีหลายแถว
