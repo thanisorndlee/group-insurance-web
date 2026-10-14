@@ -1106,14 +1106,18 @@ const handleInFileUpload = (
       console.log("========== ไฟล์แจ้งเข้า ==========");
       console.log("ข้อมูลทั้งหมด:", rows);
 
-      const dataRows = rows
+ const dataRows = rows
   .slice(9)
-  .filter((row) =>
-    row.some(
-      (cell: any) =>
-        String(cell ?? "").trim() !== ""
-    )
-  );
+  .filter((row) => {
+    const employeeCode = String(row[2] ?? "").trim();
+    const firstName = String(row[4] ?? "").trim();
+    const lastName = String(row[5] ?? "").trim();
+
+    return (
+      employeeCode !== "" &&
+      (firstName !== "" || lastName !== "")
+    );
+  });
 
       console.log(
         "จำนวนข้อมูลแจ้งเข้า:",
@@ -1252,48 +1256,38 @@ const effectiveDate: string | null = null;
       );
 
       const newEmployees: Employee[] = [];
-      const duplicateEmployees: Employee[] = [];
+const duplicateEmployees: Employee[] = [];
 
-      mappedEmployees.forEach((employee) => {
-        const idCard = String(
-          employee.id_card ?? ""
-        )
-          .trim()
-          .replace(/\D/g, "");
+mappedEmployees.forEach((employee) => {
+  const idCard = String(employee.id_card ?? "")
+    .trim()
+    .replace(/\D/g, "");
 
-        if (
-          idCard !== "" &&
-          existingIdCards.has(idCard)
-        ) {
-          duplicateEmployees.push(employee);
-        } else {
-          newEmployees.push(employee);
+  // ถ้าไม่มีเลขบัตรประชาชน ให้ข้ามการจัดกลุ่มไว้ก่อน
+  if (!idCard) {
+    return;
+  }
 
-          if (idCard !== "") {
-            existingIdCards.add(idCard);
-          }
-        }
-      });
+  if (existingIdCards.has(idCard)) {
+    duplicateEmployees.push(employee);
+  } else {
+    newEmployees.push(employee);
+    existingIdCards.add(idCard);
+  }
+});
 
-      console.log(
-        "พนักงานใหม่:",
-        newEmployees.length
-      );
+console.log("========== ตรวจสอบแจ้งเข้า ==========");
+console.log("ข้อมูลที่ผ่านการกรอง:", mappedEmployees.length);
+console.log("พนักงานใหม่:", newEmployees.length);
+console.log("มีอยู่แล้วในระบบ:", duplicateEmployees.length);
 
-      console.log(
-        "พนักงานซ้ำ:",
-        duplicateEmployees.length
-      );
-      // เก็บรายชื่อไว้สำหรับกดดูภายหลัง
-      setInNewEmployees(newEmployees);
-      setInExistingEmployees(duplicateEmployees);
+setInNewEmployees(newEmployees);
+setInExistingEmployees(duplicateEmployees);
 
-      setInPreview(newEmployees);
-      setInRowCount(mappedEmployees.length);
-      setInNewCount(newEmployees.length);
-      setInDuplicateCount(
-        duplicateEmployees.length
-      );
+setInPreview(newEmployees);
+setInRowCount(mappedEmployees.length);
+setInNewCount(newEmployees.length);
+setInDuplicateCount(duplicateEmployees.length);
 
     } catch (err) {
       console.error(
