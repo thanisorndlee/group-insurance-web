@@ -1255,6 +1255,18 @@ const effectiveDate: string | null = null;
           .filter((idCard) => idCard !== "")
       );
 
+      console.log(
+  "จำนวนพนักงานที่โหลดจากฐานข้อมูล:",
+  employees.length
+);
+
+console.log(
+  "ตัวอย่างรหัสพนักงานในฐานข้อมูล:",
+  employees.slice(0, 5).map(employee => ({
+    employee_code: employee.employee_code,
+    id_card_length: String(employee.id_card ?? "").replace(/\D/g, "").length,
+  }))
+);
       const newEmployees: Employee[] = [];
 const duplicateEmployees: Employee[] = [];
 
