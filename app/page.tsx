@@ -1280,24 +1280,33 @@ console.log("========== ตรวจสอบแจ้งเข้า ==========
 console.log("ข้อมูลที่ผ่านการกรอง:", mappedEmployees.length);
 console.log("พนักงานใหม่:", newEmployees.length);
 console.log("มีอยู่แล้วในระบบ:", duplicateEmployees.length);
+
 console.log(
   "ตัวอย่างข้อมูลจากไฟล์แจ้งเข้า:",
-  mappedEmployees.slice(0, 3).map(employee => ({
-    employee_code: employee.employee_code,
-    first_name: employee.first_name,
-    last_name: employee.last_name,
-    id_card_length: String(employee.id_card ?? "").replace(/\D/g, "").length,
-  }))
+  JSON.stringify(
+    mappedEmployees.slice(0, 3).map(employee => ({
+      employee_code: employee.employee_code,
+      first_name: employee.first_name,
+      last_name: employee.last_name,
+      id_card_length: String(employee.id_card ?? "").replace(/\D/g, "").length,
+    })),
+    null,
+    2
+  )
 );
 
 console.log(
   "ตัวอย่างข้อมูลที่ระบบมองว่าซ้ำ:",
-  duplicateEmployees.slice(0, 3).map(employee => ({
-    employee_code: employee.employee_code,
-    first_name: employee.first_name,
-    last_name: employee.last_name,
-    id_card_length: String(employee.id_card ?? "").replace(/\D/g, "").length,
-  }))
+  JSON.stringify(
+    duplicateEmployees.slice(0, 3).map(employee => ({
+      employee_code: employee.employee_code,
+      first_name: employee.first_name,
+      last_name: employee.last_name,
+      id_card_length: String(employee.id_card ?? "").replace(/\D/g, "").length,
+    })),
+    null,
+    2
+  )
 );
 
 setInNewEmployees(newEmployees);
