@@ -1533,6 +1533,75 @@ console.log(
   "คน"
 );
 
+
+// ==========================================
+// อัปเดตคนที่รหัสเปลี่ยน / กลับเข้าทำงาน
+// ==========================================
+let updatedChangedCount = 0;
+
+for (const item of inChanged) {
+  // ใช้ข้อมูลสดที่เพิ่งโหลดจากฐานข้อมูล
+  const fresh = currentEmployees.find((e) => e.id === item.db.id);
+
+  if (!fresh) continue;
+
+  const oldCode = normCode(fresh.employee_code);
+  const newCode = normCode(item.emp.employee_code);
+
+  // รหัสในฐานข้อมูลเปลี่ยนไปแล้วหรือไม่ใช่รหัสที่เห็นตอนอัปโหลด ให้ข้าม
+  if (oldCode !== normCode(item.db.employee_code)) continue;
+  if (!newCode || newCode === oldCode) continue;
+
+  // รหัสใหม่ถูกใช้โดยคนอื่นอยู่แล้ว ให้ข้ามเพื่อกันข้อมูลชนกัน
+  const used = lookup.byCode.get(newCode);
+  if (used && used.id !== fresh.id) {
+    console.warn("ข้ามรหัสเปลี่ยน เพราะรหัสใหม่มีคนใช้แล้ว:", newCode);
+    continue;
+  }
+
+  const wasResigned = fresh.status === "ลาออก";
+
+  const oldNote = `[รหัสเดิม ${oldCode}${
+    fresh.resignation_date ? `, ลาออกเดิม ${fresh.resignation_date}` : ""
+  }]`;
+
+  const { error } = await supabase
+    .from("employees")
+    .update({
+      employee_code: newCode,
+      employee_key: createEmployeeKey(
+        fresh.vendor,
+        newCode,
+        fresh.first_name,
+        fresh.last_name,
+        fresh.id_card
+      ),
+      ...(wasResigned
+        ? { status: "มีผลประกัน", resignation_date: null }
+        : {}),
+      remark: `${fresh.remark ?? ""} ${oldNote}`.trim(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", fresh.id);
+
+  if (error) {
+    throw new Error(
+      `อัปเดตรหัสใหม่ ${oldCode} → ${newCode} ไม่สำเร็จ: ${error.message}`
+    );
+  }
+
+  updatedChangedCount++;
+}
+
+if (updatedChangedCount > 0) {
+  const refreshed = await loadAllEmployees();
+  setEmployees(refreshed);
+  setRowCount(refreshed.length);
+  setInChanged([]);
+}
+
+console.log("🔁 อัปเดตรหัสเปลี่ยน/กลับเข้าทำงาน:", updatedChangedCount, "คน");
+
 console.log(
   "📥 จำนวนพนักงานใหม่ที่จะบันทึก:",
   newEmployees.length
@@ -1571,8 +1640,11 @@ if (newEmployees.length === 0) {
     setTimeout(resolve, 700)
   );
 
-    setInSuccessMessage(
-    `บันทึกเข้าสู่ฐานข้อมูลแล้ว ไม่มีพนักงานใหม่ ข้อมูล ${(inRowCount ?? 0).toLocaleString()} รายการมีอยู่ในระบบแล้ว`
+      setInSuccessMessage(
+    `บันทึกเข้าสู่ฐานข้อมูลแล้ว ไม่มีพนักงานใหม่` +
+      (updatedChangedCount > 0
+        ? ` | อัปเดตรหัสใหม่/กลับเข้าทำงาน ${updatedChangedCount} คน`
+        : ` ข้อมูล ${(inRowCount ?? 0).toLocaleString()} รายการมีอยู่ในระบบแล้ว`)
   );
 
   return;
@@ -1650,8 +1722,12 @@ for (
     // ==========================================
     // แจ้งผล
     // ==========================================
-    setInSuccessMessage(
-  `บันทึกเข้าสู่ฐานข้อมูลแล้ว เพิ่มพนักงานใหม่ ${totalImported.toLocaleString()} คน`
+    
+        setInSuccessMessage(
+  `บันทึกเข้าสู่ฐานข้อมูลแล้ว เพิ่มพนักงานใหม่ ${totalImported.toLocaleString()} คน` +
+    (updatedChangedCount > 0
+      ? ` | อัปเดตรหัสใหม่/กลับเข้าทำงาน ${updatedChangedCount} คน`
+      : "")
 );
 
     setInPreview([]);
