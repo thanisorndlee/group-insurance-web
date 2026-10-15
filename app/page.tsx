@@ -939,12 +939,6 @@ const workingCount = uniqueEmployees.filter(
   (employee) => employee.status === "มีผลประกัน"
 ).length;
 
-alert(
-  `ตรวจสอบ Master Excel\n\n` +
-  `ลาออก: ${resignedCount} คน\n` +
-  `มีผลประกัน: ${workingCount} คน\n` +
-  `รวม: ${uniqueEmployees.length} คน`
-);
 
 console.log(
   "🔴 จำนวนคนที่เป็นลาออก:",
@@ -1176,7 +1170,7 @@ const effectiveDate: string | null = null;
             ).trim(),
 
             remark: String(
-              row[16] ?? ""
+              row[17] ?? ""
             ).trim(),
 
             resignation_date: null,
@@ -1436,8 +1430,8 @@ if (newEmployees.length === 0) {
     setTimeout(resolve, 700)
   );
 
-  setInSuccessMessage(
-    `บันทึกเข้าสู่ฐานข้อมูลแล้ว ไม่มีพนักงานใหม่ ข้อมูล ${inPreview.length.toLocaleString()} รายการมีอยู่ในระบบแล้ว`
+    setInSuccessMessage(
+    `บันทึกเข้าสู่ฐานข้อมูลแล้ว ไม่มีพนักงานใหม่ ข้อมูล ${(inRowCount ?? 0).toLocaleString()} รายการมีอยู่ในระบบแล้ว`
   );
 
   return;
