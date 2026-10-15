@@ -1044,7 +1044,11 @@ const handleInFileUpload = (
         cellDates: true,
       });
 
-      const firstSheetName = workbook.SheetNames[0];
+            const firstSheetName =
+        workbook.SheetNames.find(
+          (_name, index) =>
+            (workbook.Workbook?.Sheets?.[index]?.Hidden ?? 0) === 0
+        ) ?? workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
 
       const rows = XLSX.utils.sheet_to_json<any[]>(worksheet, {
