@@ -986,51 +986,6 @@ console.log(
 setEmployees(uniqueEmployees);
 setRowCount(uniqueEmployees.length);
 
-  
-
-      // ========================================
-// ตรวจว่าพนักงานในไฟล์แจ้งเข้าเป็นคนใหม่หรือไม่
-// เทียบกับข้อมูลตั้งต้นที่มีอยู่ใน employees
-// ========================================
-
-const existingIdCards = new Set(
-  employees
-    .map((employee) =>
-      String(employee.id_card ?? "")
-        .trim()
-        .replace(/\D/g, "")
-    )
-    .filter(Boolean)
-);
-
-const newEmployees = mappedEmployees.filter((employee) => {
-  const idCard = String(employee.id_card ?? "")
-    .trim()
-    .replace(/\D/g, "");
-
-  // ไม่มีเลขบัตรประชาชน ไม่ถือว่าเป็นพนักงานใหม่
-  if (!idCard) {
-    return false;
-  }
-
-  // ถ้ามีเลขบัตรนี้อยู่ในข้อมูลตั้งต้นแล้ว = คนเดิม
-  return !existingIdCards.has(idCard);
-});
-
-const duplicateCount = mappedEmployees.length - newEmployees.length;
-
-console.log("========== ตรวจสอบแจ้งเข้า ==========");
-console.log("ข้อมูลในไฟล์แจ้งเข้าทั้งหมด:", mappedEmployees.length);
-console.log("พนักงานใหม่:", newEmployees.length);
-console.log("มีอยู่แล้วในระบบ:", duplicateCount);
-console.log("ข้อมูลพนักงานใหม่:", newEmployees);
-
-// เก็บเฉพาะ "คนใหม่" ไว้สำหรับการบันทึก
-setInPreview(newEmployees);
-
-setInRowCount(mappedEmployees.length);
-setInNewCount(newEmployees.length);
-setInDuplicateCount(duplicateCount);
 
     } catch (err) {
 
@@ -1082,7 +1037,7 @@ const handleInFileUpload = (
 
   const reader = new FileReader();
 
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
     try {
       const data = e.target?.result;
 
@@ -1239,44 +1194,54 @@ const effectiveDate: string | null = null;
         mappedEmployees
       );
 
-      setInAllEmployees(mappedEmployees);
-      console.log(
-  "ตรวจข้อมูลจากไฟล์ก่อนเทียบฐานข้อมูล:",
-  mappedEmployees.slice(0, 3).map((employee) => ({
-    employee_code: employee.employee_code,
-    first_name: employee.first_name,
-    last_name: employee.last_name,
-    id_card: employee.id_card,
-  }))
-);
-      // ==========================================
-      // ตรวจสอบพนักงานที่มีอยู่แล้ว
-      // ใช้เลขบัตรประชาชนเป็นตัวตรวจสอบ
-      // ==========================================
+       setInAllEmployees(mappedEmployees);
 
-      const existingIdCards = new Set(
-        employees
-          .map((employee) =>
-            String(employee.id_card ?? "")
-              .trim()
-              .replace(/\D/g, "")
-          )
-          .filter((idCard) => idCard !== "")
-      );
+// โหลดข้อมูลสดจากฐานข้อมูล ไม่พึ่ง state employees
+const dbEmployees = await loadAllEmployees();
 
-      console.log(
-  "จำนวนพนักงานที่โหลดจากฐานข้อมูล:",
-  employees.length
+const existingIdCards = new Set(
+  dbEmployees
+    .map((employee) =>
+      String(employee.id_card ?? "").trim().replace(/\D/g, "")
+    )
+    .filter((idCard) => idCard !== "")
 );
 
+const dbCodes = new Set(
+  dbEmployees.map((employee) =>
+    String(employee.employee_code ?? "").trim().toUpperCase()
+  )
+);
+
+// Log ตรวจสอบ (ใช้ JSON.stringify เพื่อให้ Safari แสดงข้อความจริง)
 console.log(
-  "ตัวอย่างรหัสพนักงานในฐานข้อมูล:",
-  employees.slice(0, 5).map(employee => ({
-    employee_code: employee.employee_code,
-    id_card_length: String(employee.id_card ?? "").replace(/\D/g, "").length,
-  }))
+  "ผลตรวจ:",
+  JSON.stringify(
+    {
+      sheet: firstSheetName,
+      fileName: file.name,
+      dbRows: dbEmployees.length,
+      fileRows: mappedEmployees.length,
+      matchByCode: mappedEmployees.filter((e) =>
+        dbCodes.has(e.employee_code)
+      ).length,
+      matchByIdCard: mappedEmployees.filter((e) =>
+        existingIdCards.has(e.id_card)
+      ).length,
+      emptyIdCard: mappedEmployees.filter((e) => !e.id_card).length,
+      first3File: mappedEmployees
+        .slice(0, 3)
+        .map((e) => [e.employee_code, e.first_name, e.id_card.length]),
+      first3Db: dbEmployees
+        .slice(0, 3)
+        .map((e) => [e.employee_code, e.first_name]),
+    },
+    null,
+    2
+  )
 );
-      const newEmployees: Employee[] = [];
+
+const newEmployees: Employee[] = [];
 const duplicateEmployees: Employee[] = [];
 
 mappedEmployees.forEach((employee) => {
@@ -1284,10 +1249,7 @@ mappedEmployees.forEach((employee) => {
     .trim()
     .replace(/\D/g, "");
 
-  // ถ้าไม่มีเลขบัตรประชาชน ให้ข้ามการจัดกลุ่มไว้ก่อน
-  if (!idCard) {
-    return;
-  }
+  if (!idCard) return;
 
   if (existingIdCards.has(idCard)) {
     duplicateEmployees.push(employee);
@@ -1297,37 +1259,12 @@ mappedEmployees.forEach((employee) => {
   }
 });
 
-console.log("========== ตรวจสอบแจ้งเข้า ==========");
-console.log("ข้อมูลที่ผ่านการกรอง:", mappedEmployees.length);
-console.log("พนักงานใหม่:", newEmployees.length);
-console.log("มีอยู่แล้วในระบบ:", duplicateEmployees.length);
-
 console.log(
-  "ตัวอย่างข้อมูลจากไฟล์แจ้งเข้า:",
-  JSON.stringify(
-    mappedEmployees.slice(0, 3).map(employee => ({
-      employee_code: employee.employee_code,
-      first_name: employee.first_name,
-      last_name: employee.last_name,
-      id_card_length: String(employee.id_card ?? "").replace(/\D/g, "").length,
-    })),
-    null,
-    2
-  )
-);
-
-console.log(
-  "ตัวอย่างข้อมูลที่ระบบมองว่าซ้ำ:",
-  JSON.stringify(
-    duplicateEmployees.slice(0, 3).map(employee => ({
-      employee_code: employee.employee_code,
-      first_name: employee.first_name,
-      last_name: employee.last_name,
-      id_card_length: String(employee.id_card ?? "").replace(/\D/g, "").length,
-    })),
-    null,
-    2
-  )
+  "สรุป:",
+  JSON.stringify({
+    new: newEmployees.length,
+    duplicate: duplicateEmployees.length,
+  })
 );
 
 setInNewEmployees(newEmployees);
