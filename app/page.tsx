@@ -535,8 +535,7 @@ export default function Home() {
 const [showOutNames, setShowOutNames] = useState(false);
   const [claims, setClaims] = useState<Claim[]>([]);
   // รายชื่อพนักงานแจ้งเข้า แยกเป็น 2 กลุ่ม
-const [inNameTab, setInNameTab] = useState<"new" | "existing">("new");
-
+const [inNameTab, setInNameTab] = useState<"new" | "existing" | "changed">("new");
 const [inNewEmployees, setInNewEmployees] = useState<Employee[]>([]);
 
 const [inExistingEmployees, setInExistingEmployees] = useState<Employee[]>([]);
@@ -3475,7 +3474,7 @@ try {
           </p>
         )}
 {!isInLoading && inRowCount !== null && (
-  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
 
     {/* พนักงานใหม่ */}
     <div className="rounded-xl border border-[#7ED957]/20 bg-[#7ED957]/5 p-4">
@@ -3503,7 +3502,32 @@ try {
 
     </div>
 
+        {/* รหัสเปลี่ยน / กลับเข้าทำงาน */}
+    <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
 
+      <div className="text-xs text-amber-700">
+        รหัสเปลี่ยน / กลับเข้าทำงาน
+      </div>
+
+      <div className="mt-1 text-2xl font-black text-amber-600">
+        {inChanged.length.toLocaleString()} คน
+      </div>
+
+      {inChanged.length > 0 && (
+        <button
+          type="button"
+          onClick={() => {
+            setInNameTab("changed");
+            setShowInNames(true);
+          }}
+          className="mt-3 text-sm font-medium text-amber-700 underline hover:text-amber-800"
+        >
+          👀 ดูรายชื่อ
+        </button>
+      )}
+
+    </div> 
+    
     {/* มีอยู่แล้วในข้อมูลตั้งต้น */}
     <div className="rounded-xl border border-white/10 bg-white/5 p-4">
       
