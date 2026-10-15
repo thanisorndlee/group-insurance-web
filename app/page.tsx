@@ -3298,6 +3298,17 @@ try {
   }
 };
 
+  const inNameList: Employee[] =
+  inNameTab === "new"
+    ? inNewEmployees
+    : inNameTab === "existing"
+    ? inExistingEmployees
+    : inChanged.map((c) => ({
+        ...c.emp,
+        // ใช้ช่องบริษัทแสดงรหัสเดิมและสถานะเดิม (เฉพาะแสดงผล)
+        vendor: `รหัสเดิม ${c.db.employee_code} (${c.db.status})`,
+      }));
+
   return (
     <main className="min-h-screen bg-slate-100 p-8">
       <div className="mx-auto max-w-7xl">
@@ -3527,7 +3538,7 @@ try {
       )}
 
     </div> 
-    
+
     {/* มีอยู่แล้วในข้อมูลตั้งต้น */}
     <div className="rounded-xl border border-white/10 bg-white/5 p-4">
       
@@ -3573,8 +3584,10 @@ try {
           </h3>
 
           <p className="mt-1 text-sm text-slate-500">
-            {inNameTab === "new"
+                        {inNameTab === "new"
               ? `พนักงานใหม่ ${inNewEmployees.length.toLocaleString()} คน`
+              : inNameTab === "changed"
+              ? `รหัสเปลี่ยน / กลับเข้าทำงาน ${inChanged.length.toLocaleString()} คน`
               : `มีอยู่แล้วในข้อมูลตั้งต้น ${inExistingEmployees.length.toLocaleString()} คน`}
           </p>
         </div>
@@ -3617,16 +3630,26 @@ try {
           มีอยู่แล้ว {inExistingEmployees.length} คน
         </button>
 
+      
+        <button
+          type="button"
+          onClick={() => setInNameTab("changed")}
+          className={`rounded-lg px-4 py-2 text-sm font-medium ${
+            inNameTab === "changed"
+              ? "bg-amber-500 text-white"
+              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+          }`}
+        >
+          รหัสเปลี่ยน {inChanged.length} คน
+        </button>
+
       </div>
 
 
-      {/* รายชื่อ */}
+            {/* รายชื่อ */}
       <div className="max-h-[60vh] overflow-y-auto px-6 py-3">
 
-        {(inNameTab === "new"
-          ? inNewEmployees
-          : inExistingEmployees
-        ).map((employee, index) => (
+        {inNameList.map((employee, index) => (
 
           <div
             key={`${employee.employee_code}-${index}`}
@@ -3655,10 +3678,7 @@ try {
 
         ))}
 
-        {(inNameTab === "new"
-          ? inNewEmployees
-          : inExistingEmployees
-        ).length === 0 && (
+        {inNameList.length === 0 && (
           <div className="py-10 text-center text-sm text-slate-400">
             ไม่พบรายชื่อ
           </div>
