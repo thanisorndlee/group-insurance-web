@@ -540,6 +540,7 @@ const [inNameTab, setInNameTab] = useState<"new" | "existing">("new");
 const [inNewEmployees, setInNewEmployees] = useState<Employee[]>([]);
 
 const [inExistingEmployees, setInExistingEmployees] = useState<Employee[]>([]);
+const [inChanged, setInChanged] = useState<{ emp: Employee; db: Employee }[]>([]);
   const [employeeSearchInput, setEmployeeSearchInput] = useState("");
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ทั้งหมด");
@@ -1119,6 +1120,7 @@ const handleInFileUpload = (
   console.log("📄 ไฟล์แจ้งเข้า:", file.name);
 
   setInFileName(file.name);
+  setInChanged([]);
   setInRowCount(null);
   setInPreview([]);
   setInNewCount(null);
