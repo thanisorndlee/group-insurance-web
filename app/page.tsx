@@ -1240,6 +1240,15 @@ const effectiveDate: string | null = null;
       );
 
       setInAllEmployees(mappedEmployees);
+      console.log(
+  "ตรวจข้อมูลจากไฟล์ก่อนเทียบฐานข้อมูล:",
+  mappedEmployees.slice(0, 3).map((employee) => ({
+    employee_code: employee.employee_code,
+    first_name: employee.first_name,
+    last_name: employee.last_name,
+    id_card: employee.id_card,
+  }))
+);
       // ==========================================
       // ตรวจสอบพนักงานที่มีอยู่แล้ว
       // ใช้เลขบัตรประชาชนเป็นตัวตรวจสอบ
