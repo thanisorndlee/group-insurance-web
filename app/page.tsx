@@ -258,6 +258,105 @@ const getEmployeeFullName = (employee: Employee) => {
     .trim();
 };
 // =========================
+// ฟังก์ชันจับคู่พนักงานกลาง
+// ใช้ร่วมกันใน แจ้งเข้า / แจ้งออก / ประกันส่งกลับ
+// =========================
+const normId = (value: unknown) =>
+  String(value ?? "").replace(/\D/g, "");
+
+const normCode = (value: unknown) =>
+  String(value ?? "")
+    .trim()
+    .replace(/\s+/g, "")
+    .toUpperCase();
+
+const nameKey = (first: unknown, last: unknown) =>
+  normalizeName(first) + "|" + normalizeName(last);
+
+type MatchResult = {
+  employee: Employee | null;
+  by: "id_card" | "code" | "name" | "none";
+  warning?: string;
+};
+
+// สร้างตารางค้นหา 3 แบบจากข้อมูลใน DB
+const buildLookup = (dbEmployees: Employee[]) => {
+  const byId = new Map<string, Employee>();
+  const byCode = new Map<string, Employee>();
+  const byName = new Map<string, Employee[]>();
+
+  for (const e of dbEmployees) {
+    const id = normId(e.id_card);
+    if (id) byId.set(id, e);
+
+    const code = normCode(e.employee_code);
+    if (code) byCode.set(code, e);
+
+    const nk = nameKey(e.first_name, e.last_name);
+    byName.set(nk, [...(byName.get(nk) ?? []), e]);
+  }
+
+  return { byId, byCode, byName };
+};
+
+// หาพนักงานจาก 1 แถวในไฟล์
+const findEmployee = (
+  row: {
+    id_card?: string;
+    employee_code?: string;
+    first_name?: string;
+    last_name?: string;
+  },
+  lookup: ReturnType<typeof buildLookup>
+): MatchResult => {
+  const id = normId(row.id_card);
+  const code = normCode(row.employee_code);
+  const nk = nameKey(row.first_name, row.last_name);
+
+  // 1) เลขบัตรประชาชน (แม่นที่สุด)
+  if (id && lookup.byId.has(id)) {
+    const hit = lookup.byId.get(id)!;
+
+    const warning =
+      nameKey(hit.first_name, hit.last_name) !== nk
+        ? "เลขบัตรตรงแต่ชื่อไม่ตรง"
+        : code && normCode(hit.employee_code) !== code
+        ? `รหัสไม่ตรง (DB: ${hit.employee_code})`
+        : undefined;
+
+    return { employee: hit, by: "id_card", warning };
+  }
+
+  // 2) รหัสพนักงาน (เฉพาะแถวที่ไม่มีเลขบัตร เช่น ไฟล์แจ้งออก)
+  //    ต้องชื่อตรงด้วย เพราะรหัสอาจถูกนำไปใช้กับคนใหม่
+  if (!id && code && lookup.byCode.has(code)) {
+    const hit = lookup.byCode.get(code)!;
+
+    if (nameKey(hit.first_name, hit.last_name) === nk) {
+      return { employee: hit, by: "code" };
+    }
+
+    return {
+      employee: null,
+      by: "none",
+      warning: `รหัสตรงแต่ชื่อไม่ตรง (DB: ${hit.first_name} ${hit.last_name})`,
+    };
+  }
+
+  // 3) ชื่ออย่างเดียว: ใช้ได้เมื่อเจอคนเดียวเท่านั้น และต้องตรวจเสมอ
+  const nameHits = lookup.byName.get(nk) ?? [];
+
+  if (nameHits.length === 1) {
+    return {
+      employee: nameHits[0],
+      by: "name",
+      warning: "จับคู่ด้วยชื่อเท่านั้น ควรตรวจสอบ",
+    };
+  }
+
+  return { employee: null, by: "none" };
+};
+// =========================
 // สร้าง Map สรุป Claims
 // =========================
 const getClaimSummaryMap = (
@@ -1234,7 +1333,7 @@ console.log(
         .slice(0, 3)
         .map((e) => [e.employee_code, e.first_name]),
     },
-    null,
+    null, 
     2
   )
 );
@@ -1247,30 +1346,51 @@ console.log(
   )
 );
 
+const lookup = buildLookup(dbEmployees);
+
 const newEmployees: Employee[] = [];
 const duplicateEmployees: Employee[] = [];
+const needReview: { emp: Employee; reason: string }[] = [];
+const seenIds = new Set<string>();
 
-mappedEmployees.forEach((employee) => {
-  const idCard = String(employee.id_card ?? "")
-    .trim()
-    .replace(/\D/g, "");
+for (const emp of mappedEmployees) {
+  const id = normId(emp.id_card);
+  const nk = nameKey(emp.first_name, emp.last_name);
+  const hit = id ? lookup.byId.get(id) : undefined;
 
-  if (!idCard) return;
-
-  if (existingIdCards.has(idCard)) {
-    duplicateEmployees.push(employee);
+  if (hit) {
+    duplicateEmployees.push(emp);
+    if (nameKey(hit.first_name, hit.last_name) !== nk) {
+      needReview.push({ emp, reason: "เลขบัตรตรงแต่ชื่อไม่ตรง" });
+    }
+  } else if ((lookup.byName.get(nk) ?? []).length > 0) {
+    needReview.push({
+      emp,
+      reason: id ? "ชื่อตรงแต่เลขบัตรไม่ตรง" : "ชื่อตรงแต่ไม่มีเลขบัตร",
+    });
+  } else if (!id) {
+    needReview.push({ emp, reason: "ไม่มีเลขบัตร" });
+  } else if (seenIds.has(id)) {
+    needReview.push({ emp, reason: "เลขบัตรซ้ำกันเองในไฟล์" });
   } else {
-    newEmployees.push(employee);
-    existingIdCards.add(idCard);
+    newEmployees.push(emp);
+    seenIds.add(id);
   }
-});
+}
 
 console.log(
   "สรุป:",
   JSON.stringify({
     new: newEmployees.length,
     duplicate: duplicateEmployees.length,
+    needReview: needReview.length,
   })
+);
+console.log(
+  "ต้องตรวจ:",
+  JSON.stringify(
+    needReview.map((r) => [r.emp.employee_code, r.emp.first_name, r.reason])
+  )
 );
 
 setInNewEmployees(newEmployees);
