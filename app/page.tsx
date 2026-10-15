@@ -1238,6 +1238,14 @@ console.log(
     2
   )
 );
+console.log(
+  "รหัสที่ไม่ตรงกับ DB:",
+  JSON.stringify(
+    mappedEmployees
+      .filter((e) => !dbCodes.has(e.employee_code))
+      .map((e) => [e.employee_code, e.first_name, e.last_name])
+  )
+);
 
 const newEmployees: Employee[] = [];
 const duplicateEmployees: Employee[] = [];
