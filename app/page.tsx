@@ -1467,55 +1467,38 @@ const newEmployees = inPreview;
 // ==========================================
 const currentEmployees = await loadAllEmployees();
 
-const employeeMap = new Map<string, Employee>();
-
-currentEmployees.forEach((employee) => {
-  const code = String(employee.employee_code ?? "")
-    .trim()
-    .replace(/\s+/g, "")
-    .toUpperCase();
-
-  if (code) {
-    employeeMap.set(code, employee);
-  }
-});
+const lookup = buildLookup(currentEmployees);
 
 let updatedEmploymentCount = 0;
 
 for (const inEmployee of inAllEmployees) {
-  const code = String(inEmployee.employee_code ?? "")
-    .trim()
-    .replace(/\s+/g, "")
-    .toUpperCase();
+  const code = normCode(inEmployee.employee_code);
 
-  const masterEmployee = employeeMap.get(code);
+  const masterEmployee = findEmployee(inEmployee, lookup).employee;
 
   if (!masterEmployee) continue;
 
   // เติมเฉพาะกรณี Master ไม่มีวันที่เริ่มงาน
   if (
-  !masterEmployee.employment_date &&
-  inEmployee.employment_date
-) {
-  const { error } = await supabase
-    .from("employees")
-    .update({
-      employment_date:
-        inEmployee.employment_date,
+    !masterEmployee.employment_date &&
+    inEmployee.employment_date
+  ) {
+    const { error } = await supabase
+      .from("employees")
+      .update({
+        employment_date: inEmployee.employment_date,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", masterEmployee.id);
 
-      updated_at:
-        new Date().toISOString(),
-    })
-    .eq("id", masterEmployee.id);
+    if (error) {
+      throw new Error(
+        `อัปเดตวันที่เริ่มงาน ${code} ไม่สำเร็จ: ${error.message}`
+      );
+    }
 
-  if (error) {
-    throw new Error(
-      `อัปเดตวันที่เริ่มงาน ${code} ไม่สำเร็จ: ${error.message}`
-    );
+    updatedEmploymentCount++;
   }
-
-  updatedEmploymentCount++;
-}
 }
 
 console.log(
