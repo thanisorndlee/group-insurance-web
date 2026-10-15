@@ -1809,10 +1809,15 @@ const handleOutFileUpload = (
           cellDates: true,
         });
 
-      const worksheet =
-        workbook.Sheets[
-          workbook.SheetNames[0]
-        ];
+            const outSheetName =
+        workbook.SheetNames.find(
+          (_name, index) =>
+            (workbook.Workbook?.Sheets?.[index]?.Hidden ?? 0) === 0
+        ) ?? workbook.SheetNames[0];
+
+      console.log("ชีตที่อ่าน (แจ้งออก):", JSON.stringify(outSheetName));
+
+      const worksheet = workbook.Sheets[outSheetName];
 
       const rows =
         XLSX.utils.sheet_to_json<any[]>(
@@ -2666,7 +2671,13 @@ const handleInsuranceFileUpload = (
         cellDates: true,
       });
 
-      const firstSheetName = workbook.SheetNames[0];
+            const firstSheetName =
+        workbook.SheetNames.find(
+          (_name, index) =>
+            (workbook.Workbook?.Sheets?.[index]?.Hidden ?? 0) === 0
+        ) ?? workbook.SheetNames[0];
+
+      console.log("ชีตที่อ่าน (ประกันส่งกลับ):", JSON.stringify(firstSheetName));
       const worksheet = workbook.Sheets[firstSheetName];
 
       const rows = XLSX.utils.sheet_to_json<any[]>(worksheet, {
