@@ -1353,6 +1353,7 @@ const lookup = buildLookup(dbEmployees);
 const newEmployees: Employee[] = [];
 const duplicateEmployees: Employee[] = [];
 const needReview: { emp: Employee; reason: string }[] = [];
+const changedList: { emp: Employee; db: Employee }[] = [];
 const seenIds = new Set<string>();
 
 for (const emp of mappedEmployees) {
@@ -1361,9 +1362,18 @@ for (const emp of mappedEmployees) {
   const hit = id ? lookup.byId.get(id) : undefined;
 
   if (hit) {
-    duplicateEmployees.push(emp);
-    if (nameKey(hit.first_name, hit.last_name) !== nk) {
-      needReview.push({ emp, reason: "เลขบัตรตรงแต่ชื่อไม่ตรง" });
+        const nameMatches = nameKey(hit.first_name, hit.last_name) === nk;
+    const codeChanged =
+      normCode(hit.employee_code) !== normCode(emp.employee_code);
+
+    if (nameMatches && codeChanged) {
+      // เลขบัตรและชื่อตรง แต่รหัสพนักงานเปลี่ยน
+      changedList.push({ emp, db: hit });
+    } else {
+      duplicateEmployees.push(emp);
+      if (!nameMatches) {
+        needReview.push({ emp, reason: "เลขบัตรตรงแต่ชื่อไม่ตรง" });
+      }
     }
   } else if ((lookup.byName.get(nk) ?? []).length > 0) {
     needReview.push({
@@ -1386,6 +1396,7 @@ console.log(
     new: newEmployees.length,
     duplicate: duplicateEmployees.length,
     needReview: needReview.length,
+    changed: changedList.length,
   })
 );
 console.log(
@@ -1396,6 +1407,20 @@ console.log(
 );
 
 setInNewEmployees(newEmployees);
+setInChanged(changedList);
+
+console.log(
+  "รหัสเปลี่ยน:",
+  JSON.stringify(
+    changedList.map((c) => [
+      c.db.employee_code,
+      c.emp.employee_code,
+      c.emp.first_name,
+      c.db.status,
+    ])
+  )
+);
+
 setInExistingEmployees(duplicateEmployees);
 
 setInPreview(newEmployees);
