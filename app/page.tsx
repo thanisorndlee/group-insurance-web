@@ -2706,6 +2706,24 @@ console.log(
   dataRows.length
 );
 
+
+console.log(
+  "ตัวอย่างวันที่ (ประกันส่งกลับ):",
+  JSON.stringify({
+    textDates: dataRows.filter(
+      (r) => typeof r[20] === "string" && String(r[20]).trim() !== ""
+    ).length,
+    sample: dataRows
+      .slice(0, 5)
+      .map((r) => [
+        String(r[20]),
+        typeof r[20],
+        formatExcelDate(r[20]),
+        formatExcelDate(r[21]),
+      ]),
+  })
+);
+
 const mappedEmployees: Employee[] =
   dataRows.map((row) => {
 
@@ -2950,6 +2968,43 @@ console.log(
     cats.notFound
       .slice(0, 10)
       .map((r) => [r.employee_code, r.first_name, r.last_name, r.status])
+  )
+);
+
+
+const statusCount: Record<string, number> = {};
+for (const row of mappedEmployees) {
+  const s = String(row.status ?? "").trim() || "(ว่าง)";
+  statusCount[s] = (statusCount[s] ?? 0) + 1;
+}
+console.log("ประกันส่งกลับ นับตามสถานะ (คอลัมน์ G):", JSON.stringify(statusCount));
+
+const junkRows = cats.notFound.filter((r) => !r.first_name && !r.last_name);
+const realNotFound = cats.notFound.filter((r) => r.first_name || r.last_name);
+
+console.log(
+  "ไม่เจอเลย แยกประเภท:",
+  JSON.stringify({
+    junkRows: junkRows.length,
+    realPeople: realNotFound.length,
+    realWithIdCard: realNotFound.filter((r) => r.id_card).length,
+    realNoIdCard: realNotFound.filter((r) => !r.id_card).length,
+  })
+);
+
+console.log(
+  "ตัวอย่าง รหัสตรงแต่ชื่อต่าง พร้อมสถานะ:",
+  JSON.stringify(
+    cats.codeButNameDiffers
+      .slice(0, 15)
+      .map(([r, d]) => [
+        r.employee_code,
+        r.first_name,
+        r.last_name,
+        r.status,
+        d.first_name,
+        d.last_name,
+      ])
   )
 );
 
