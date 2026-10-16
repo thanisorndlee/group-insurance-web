@@ -2688,18 +2688,27 @@ const handleInsuranceFileUpload = (
       console.log("========== ประกันส่งกลับ ==========");
       console.log("ข้อมูลทั้งหมด:", rows);
 
-      // ==========================================
+// ==========================================
 // แปลงข้อมูลไฟล์ประกันส่งกลับ
 // ==========================================
 
+// หาแถวหัวตาราง (คอลัมน์ C = "รหัสพนักงาน") แล้วเริ่มอ่านถัดจากนั้น
+const insHeaderIndex = rows.findIndex((row) =>
+  String(row[2] ?? "").includes("รหัสพนักงาน")
+);
+
+if (insHeaderIndex === -1) {
+  throw new Error("ไม่พบแถวหัวตาราง 'รหัสพนักงาน' ในไฟล์ประกันส่งกลับ");
+}
+
 const dataRows = rows
-  .slice(1)
-  .filter((row) =>
-    row.some(
-      (cell: any) =>
-        String(cell ?? "").trim() !== ""
-    )
-  );
+  .slice(insHeaderIndex + 1)
+  .filter((row) => {
+    const code = String(row[2] ?? "").trim();
+    const first = String(row[4] ?? "").trim();
+    const last = String(row[5] ?? "").trim();
+    return code !== "" && (first !== "" || last !== "");
+  });
 
 console.log(
   "จำนวนข้อมูลประกันส่งกลับ:",
