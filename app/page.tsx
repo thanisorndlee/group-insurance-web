@@ -100,7 +100,7 @@ function formatExcelDate(value: any): string | null {
 
     return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   }
-  
+
   const parsed = new Date(text);
 
   if (!isNaN(parsed.getTime())) {
@@ -2843,41 +2843,35 @@ console.log(
 setInsuranceRowCount(
   mappedEmployees.length
 );
+
 // ==========================================
-// จับคู่รหัสพนักงานกับ Master Database
+// จับคู่ด้วยเลขบัตรประชาชนเป็นหลัก
 // ==========================================
-
-const employeeMap = new Map<string, Employee>();
-
-employees.forEach((employee) => {
-  const code = String(
-    employee.employee_code ?? ""
-  )
-    .trim()
-    .replace(/\s+/g, "")
-    .toUpperCase();
-
-  if (code !== "") {
-    employeeMap.set(code, employee);
-  }
-});
+const matchLookup = buildLookup(employees);
 
 const matched: Employee[] = [];
 const unmatched: Employee[] = [];
+const needCheck: { row: Employee; db: Employee }[] = [];
 
 mappedEmployees.forEach((insuranceEmployee) => {
+  const id = normId(insuranceEmployee.id_card);
+  const masterEmployee = id ? matchLookup.byId.get(id) : undefined;
 
-  const code = String(
-    insuranceEmployee.employee_code ?? ""
-  )
-    .trim()
-    .replace(/\s+/g, "")
-    .toUpperCase();
+  // ไม่เจอเลขบัตรในฐานข้อมูล
+  if (!masterEmployee) {
+    unmatched.push(insuranceEmployee);
+    return;
+  }
 
-  const masterEmployee =
-    employeeMap.get(code);
+  // เลขบัตรตรง แต่รหัสพนักงานต่างกัน ไม่บันทึกอัตโนมัติ
+  if (
+    normCode(masterEmployee.employee_code) !==
+    normCode(insuranceEmployee.employee_code)
+  ) {
+    needCheck.push({ row: insuranceEmployee, db: masterEmployee });
+    return;
+  }
 
-  if (masterEmployee) {
   matched.push({
     ...masterEmployee,
 
@@ -2885,9 +2879,7 @@ mappedEmployees.forEach((insuranceEmployee) => {
     effective_date: insuranceEmployee.effective_date,
 
     // ประเภทปีประกัน ดูจากวันที่มีผลจริง
-    insurance_type: getInsuranceType(
-      insuranceEmployee.effective_date
-    ),
+    insurance_type: getInsuranceType(insuranceEmployee.effective_date),
 
     plan: insuranceEmployee.plan,
 
@@ -2895,9 +2887,6 @@ mappedEmployees.forEach((insuranceEmployee) => {
 
     life_plan: insuranceEmployee.life_plan,
   });
-} else {
-  unmatched.push(insuranceEmployee);
-}
 });
 
 console.log(
