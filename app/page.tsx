@@ -85,6 +85,22 @@ function formatExcelDate(value: any): string | null {
 
   if (!text) return null;
 
+    // รูปแบบ วัน/เดือน/ปี เช่น 01/01/2026 หรือ 1-2-2569
+  const dmy = text.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+
+  if (dmy) {
+    const day = Number(dmy[1]);
+    const month = Number(dmy[2]);
+    let year = Number(dmy[3]);
+
+    // ปี พ.ศ. แปลงเป็น ค.ศ.
+    if (year > 2400) year -= 543;
+
+    if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+  
   const parsed = new Date(text);
 
   if (!isNaN(parsed.getTime())) {
