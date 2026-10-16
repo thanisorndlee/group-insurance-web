@@ -2876,6 +2876,83 @@ console.log(
   unmatched
 );
 
+
+// ตรวจเทียบแบบละเอียด (ดูอย่างเดียว ไม่เขียนข้อมูล)
+const insLookup = buildLookup(employees);
+
+const sameNameAs = (a: Employee, b: Employee) =>
+  nameKey(a.first_name, a.last_name) === nameKey(b.first_name, b.last_name);
+
+const cats = {
+  codeAndNameOk: [] as Employee[],
+  codeButNameDiffers: [] as [Employee, Employee][],
+  idOnly: [] as [Employee, Employee][],
+  nameOnly: [] as [Employee, Employee][],
+  notFound: [] as Employee[],
+};
+
+for (const row of mappedEmployees) {
+  const byCode = insLookup.byCode.get(normCode(row.employee_code));
+  const byId = row.id_card
+    ? insLookup.byId.get(normId(row.id_card))
+    : undefined;
+
+  if (byCode && sameNameAs(byCode, row)) {
+    cats.codeAndNameOk.push(row);
+  } else if (byCode) {
+    cats.codeButNameDiffers.push([row, byCode]);
+  } else if (byId) {
+    cats.idOnly.push([row, byId]);
+  } else {
+    const hits =
+      insLookup.byName.get(nameKey(row.first_name, row.last_name)) ?? [];
+    if (hits.length === 1) {
+      cats.nameOnly.push([row, hits[0]]);
+    } else {
+      cats.notFound.push(row);
+    }
+  }
+}
+
+console.log(
+  "ประกันส่งกลับ ตรวจเทียบ:",
+  JSON.stringify({
+    total: mappedEmployees.length,
+    codeAndNameOk: cats.codeAndNameOk.length,
+    codeButNameDiffers: cats.codeButNameDiffers.length,
+    idOnly: cats.idOnly.length,
+    nameOnly: cats.nameOnly.length,
+    notFound: cats.notFound.length,
+  })
+);
+
+console.log(
+  "ตัวอย่าง รหัสตรงแต่ชื่อต่าง:",
+  JSON.stringify(
+    cats.codeButNameDiffers
+      .slice(0, 10)
+      .map(([r, d]) => [r.employee_code, r.first_name, d.first_name])
+  )
+);
+
+console.log(
+  "ตัวอย่าง รหัสไม่เจอแต่เลขบัตรเจอ:",
+  JSON.stringify(
+    cats.idOnly
+      .slice(0, 10)
+      .map(([r, d]) => [r.employee_code, r.first_name, d.employee_code, d.status])
+  )
+);
+
+console.log(
+  "ตัวอย่าง ไม่เจอเลย:",
+  JSON.stringify(
+    cats.notFound
+      .slice(0, 10)
+      .map((r) => [r.employee_code, r.first_name, r.last_name, r.status])
+  )
+);
+
 setInsuranceMatched(matched);
 setInsuranceUnmatched(unmatched);
 
