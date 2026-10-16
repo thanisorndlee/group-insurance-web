@@ -2909,6 +2909,64 @@ console.log(
 );
 
 
+console.log(
+  "ต้องตรวจ (เลขบัตรตรงแต่รหัสต่าง):",
+  needCheck.length,
+  JSON.stringify(
+    needCheck
+      .slice(0, 10)
+      .map((c) => [
+        c.row.employee_code,
+        c.row.first_name,
+        c.db.employee_code,
+        c.db.status,
+      ])
+  )
+);
+
+const idCounts = new Map<string, number>();
+mappedEmployees.forEach((e) => {
+  const id = normId(e.id_card);
+  if (id) idCounts.set(id, (idCounts.get(id) ?? 0) + 1);
+});
+console.log(
+  "เลขบัตรซ้ำกันในไฟล์ประกัน:",
+  Array.from(idCounts.values()).filter((n) => n > 1).length
+);
+
+// ตรวจค่าที่จะบันทึก (เฉพาะกลุ่มพร้อมบันทึก)
+const countBy = (values: (string | number | null)[]) => {
+  const result: Record<string, number> = {};
+  values.forEach((v) => {
+    const key = v === null || v === "" ? "(ว่าง)" : String(v);
+    result[key] = (result[key] ?? 0) + 1;
+  });
+  return result;
+};
+
+const effCount = countBy(matched.map((m) => m.effective_date));
+
+console.log(
+  "วันที่มีผล (ที่จะบันทึก):",
+  JSON.stringify({
+    distinct: Object.keys(effCount).length,
+    empty: effCount["(ว่าง)"] ?? 0,
+    top: Object.entries(effCount)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 12),
+  })
+);
+
+console.log(
+  "แผน (ที่จะบันทึก):",
+  JSON.stringify(countBy(matched.map((m) => m.plan)))
+);
+
+console.log(
+  "ไม่มีหมายเลขบัตรประกัน:",
+  matched.filter((m) => !m.insurance_card_no).length
+);
+
 // ตรวจเทียบแบบละเอียด (ดูอย่างเดียว ไม่เขียนข้อมูล)
 const insLookup = buildLookup(employees);
 
