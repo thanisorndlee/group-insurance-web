@@ -3044,6 +3044,20 @@ console.log(
 );
 
 
+console.log(
+  "รหัสตรงแต่ชื่อต่าง เทียบเลขบัตร (4 หลักท้าย ไฟล์/DB):",
+  JSON.stringify(
+    cats.codeButNameDiffers.map(([r, d]) => [
+      r.employee_code,
+      `${r.first_name} ${r.last_name}`,
+      `${d.first_name} ${d.last_name}`,
+      normId(r.id_card).slice(-4),
+      normId(d.id_card).slice(-4),
+      insLookup.byId.has(normId(r.id_card)) ? "เลขบัตรไฟล์มีใน DB" : "ไม่มีใน DB",
+    ])
+  )
+);
+
 const statusCount: Record<string, number> = {};
 for (const row of mappedEmployees) {
   const s = String(row.status ?? "").trim() || "(ว่าง)";
