@@ -85,6 +85,7 @@ function formatExcelDate(value: any): string | null {
 
   if (!text) return null;
 
+
     // รูปแบบ วัน/เดือน/ปี เช่น 01/01/2026 หรือ 1-2-2569
   const dmy = text.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
 
@@ -857,7 +858,7 @@ try {
 
   const reader = new FileReader();
 
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
     try {
       const data = e.target?.result;
 
@@ -1806,7 +1807,7 @@ const handleOutFileUpload = (
   const reader =
     new FileReader();
 
-  reader.onload = (e) => {
+    reader.onload = async (e) => {
 
     try {
 
@@ -1935,6 +1936,44 @@ const handleOutFileUpload = (
       console.log(
         "ข้อมูลแจ้งออกหลัง Mapping:",
         mappedRows
+      );
+
+
+      // ตรวจเทียบกับฐานข้อมูล (ดูอย่างเดียว ไม่เขียนข้อมูล)
+      const dbForOut = await loadAllEmployees();
+      const outLookup = buildLookup(dbForOut);
+
+      const outCheck = mappedRows.map((row) => {
+        const m = findEmployee(row, outLookup);
+        return { row, by: m.by, warning: m.warning, db: m.employee };
+      });
+
+      console.log(
+        "แจ้งออก ตรวจเทียบ DB:",
+        JSON.stringify({
+          total: outCheck.length,
+          byCode: outCheck.filter((c) => c.by === "code").length,
+          byName: outCheck.filter((c) => c.by === "name").length,
+          notFound: outCheck.filter((c) => c.by === "none").length,
+          alreadyResigned: outCheck.filter(
+            (c) => c.by === "code" && c.db?.status === "ลาออก"
+          ).length,
+        })
+      );
+
+      console.log(
+        "แจ้งออก ที่ต้องตรวจ:",
+        JSON.stringify(
+          outCheck
+            .filter((c) => c.by !== "code")
+            .map((c) => [
+              c.row.employee_code,
+              c.row.first_name,
+              c.row.last_name,
+              c.by,
+              c.warning ?? "",
+            ])
+        )
       );
 
       setOutPreview(
