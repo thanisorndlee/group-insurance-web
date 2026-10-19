@@ -2934,6 +2934,27 @@ console.log(
   Array.from(idCounts.values()).filter((n) => n > 1).length
 );
 
+
+const dupIds = Array.from(idCounts.entries())
+  .filter(([, n]) => n > 1)
+  .map(([id]) => id);
+
+console.log(
+  "แถวที่เลขบัตรซ้ำ:",
+  JSON.stringify(
+    mappedEmployees
+      .filter((e) => dupIds.includes(normId(e.id_card)))
+      .map((e) => [
+        e.employee_code,
+        e.first_name,
+        e.last_name,
+        e.effective_date,
+        e.plan,
+        e.insurance_card_no,
+      ])
+  )
+);
+
 // ตรวจค่าที่จะบันทึก (เฉพาะกลุ่มพร้อมบันทึก)
 const countBy = (values: (string | number | null)[]) => {
   const result: Record<string, number> = {};
