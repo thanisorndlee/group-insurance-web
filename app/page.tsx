@@ -53,6 +53,7 @@ type Claim = {
   payment_type: string;
   claim_no: string;
   affiliation: string;
+  claim_key?: string;
 };
 
 // =========================
@@ -377,6 +378,11 @@ const getEmployeeFullName = (employee: Employee) => {
 // ฟังก์ชันจับคู่พนักงานกลาง
 // ใช้ร่วมกันใน แจ้งเข้า / แจ้งออก / ประกันส่งกลับ
 // =========================
+const parseAmount = (v: any) => {
+  if (typeof v === "number") return v;
+  const n = Number(String(v ?? "").replace(/[,\s฿]/g, ""));
+  return isNaN(n) ? 0 : n;
+};
 const normId = (value: unknown) =>
   String(value ?? "").replace(/\D/g, "");
 
@@ -2504,23 +2510,13 @@ console.log("====================================");
     claim_type: String(row[9] ?? "").trim(),
 
     // วันเข้าโรงพยาบาล
-    hospital_date: String(row[10] ?? "").trim(),
+    hospital_date: formatExcelDate(row[10]),
 
-    // จำนวนเงินตามใบเสร็จ
-    receipt_amount:
-      row[11] !== "" &&
-      row[11] !== null &&
-      row[11] !== undefined
-        ? Number(row[11])
-        : 0,
+        // จำนวนเงินตามใบเสร็จ
+    receipt_amount: parseAmount(row[11]),
 
     // จำนวนเงินที่บริษัทประกันจ่าย
-    insurance_paid:
-      row[12] !== "" &&
-      row[12] !== null &&
-      row[12] !== undefined
-        ? Number(row[12])
-        : 0,
+    insurance_paid: parseAmount(row[12]),
 
     // สถานพยาบาล
     hospital_name: String(row[13] ?? "").trim(),
@@ -2553,8 +2549,22 @@ console.log(
   "========================================="
 );
 
-      setClaimPreview(mappedClaims);
-      setClaimRowCount(mappedClaims.length);
+            const keyCount = new Map<string, number>();
+      const withKeys = mappedClaims.map((c) => {
+        const base = [
+          c.reference_no,
+          c.claim_no,
+          c.id_card,
+          c.claim_type,
+          c.hospital_date ?? "",
+        ].join("|");
+        const n = (keyCount.get(base) ?? 0) + 1;
+        keyCount.set(base, n);
+        return { ...c, claim_key: `${base}|${n}` };
+      });
+
+      setClaimPreview(withKeys);
+      setClaimRowCount(withKeys.length);
 
     } catch (err) {
       console.error(err);
@@ -2620,9 +2630,9 @@ const handleImportClaimsToSupabase = async () => {
         }`
       );
 
-      const { error } = await supabase
+            const { error } = await supabase
         .from("claims")
-        .insert(chunk);
+        .upsert(chunk, { onConflict: "claim_key" });
 
       if (error) {
         console.error(
