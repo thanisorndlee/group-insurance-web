@@ -227,6 +227,26 @@ const createEmployeeKey = (
 
   return `${cleanVendor}|name|${cleanFirstName}|${cleanLastName}`;
 };
+
+// =========================
+// แปลงชื่อชีตที่เป็นวันที่ เช่น "10-8-69" เป็นตัวเลขเวลา
+// ใช้เลือกชีตล่าสุด (ถ้าไม่ใช่รูปแบบวันที่ จะได้ -1)
+// =========================
+const sheetNameToTime = (name: string): number => {
+  const m = name.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+
+  if (!m) return -1;
+
+  const day = Number(m[1]);
+  const month = Number(m[2]);
+  let year = Number(m[3]);
+
+  if (year < 100) year += 2500; // 69 -> 2569
+  if (year > 2400) year -= 543; // พ.ศ. -> ค.ศ.
+
+  return Date.UTC(year, month - 1, day);
+};
+
 // =========================
 // ค่าเบี้ยประกันตามแผน
 // =========================
@@ -1828,11 +1848,22 @@ const handleOutFileUpload = (
           cellDates: true,
         });
 
-            const outSheetName =
-        workbook.SheetNames.find(
-          (_name, index) =>
-            (workbook.Workbook?.Sheets?.[index]?.Hidden ?? 0) === 0
-        ) ?? workbook.SheetNames[0];
+              // เลือกชีตที่ชื่อเป็นวันที่ล่าสุด
+      // ถ้าไม่มีชีตไหนชื่อเป็นวันที่ ใช้ชีตแรก
+      const outSheetName =
+        [...workbook.SheetNames].sort(
+          (a, b) => sheetNameToTime(b) - sheetNameToTime(a)
+        )[0] ?? workbook.SheetNames[0];
+
+      console.log(
+        "ชีตทั้งหมดในไฟล์แจ้งออก:",
+        JSON.stringify(
+          workbook.SheetNames.map((name, index) => [
+            name,
+            workbook.Workbook?.Sheets?.[index]?.Hidden ?? "ไม่มีข้อมูล",
+          ])
+        )
+      );
 
       console.log("ชีตที่อ่าน (แจ้งออก):", JSON.stringify(outSheetName));
 
