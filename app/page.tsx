@@ -56,6 +56,85 @@ type Claim = {
 };
 
 // =========================
+// กลุ่มรายชื่อแจ้งออกที่ต้องดูเพิ่ม
+// =========================
+type OutGroupKey =
+  | "resigned"
+  | "dateDiff"
+  | "noDate"
+  | "codeNameDiff"
+  | "nameOnly"
+  | "notFound"
+  | "dupInFile";
+
+type OutProblem = {
+  row: any;
+  group: OutGroupKey;
+  reason: string;
+};
+
+const OUT_GROUPS: Record<
+  OutGroupKey,
+  {
+    label: string;
+    hint: string;
+    card: string;
+    text: string;
+    check: boolean;
+  }
+> = {
+  resigned: {
+    label: "แจ้งออกไปแล้ว",
+    hint: "ในระบบลาออกแล้ว ไม่ต้องทำอะไร",
+    card: "border-slate-200 bg-slate-50",
+    text: "text-slate-600",
+    check: false,
+  },
+  dateDiff: {
+    label: "วันที่ลาออกไม่ตรง",
+    hint: "ลาออกในระบบแล้ว แต่วันที่ต่างจากไฟล์",
+    card: "border-amber-300 bg-amber-50",
+    text: "text-amber-600",
+    check: true,
+  },
+  noDate: {
+    label: "ไม่มีวันที่ลาออก",
+    hint: "ไฟล์ไม่ระบุวันที่ ระบบจึงไม่บันทึกให้",
+    card: "border-orange-300 bg-orange-50",
+    text: "text-orange-600",
+    check: true,
+  },
+  codeNameDiff: {
+    label: "รหัสตรงแต่ชื่อไม่ตรง",
+    hint: "รหัสอาจถูกใช้กับคนอื่น",
+    card: "border-rose-300 bg-rose-50",
+    text: "text-rose-600",
+    check: true,
+  },
+  nameOnly: {
+    label: "ตรงแค่ชื่อ",
+    hint: "ไม่พบรหัส แต่ชื่อตรงกับ 1 คนในระบบ",
+    card: "border-yellow-300 bg-yellow-50",
+    text: "text-yellow-700",
+    check: true,
+  },
+  notFound: {
+    label: "ไม่พบในระบบ",
+    hint: "ไม่เจอทั้งรหัสและชื่อ",
+    card: "border-purple-300 bg-purple-50",
+    text: "text-purple-600",
+    check: true,
+  },
+  dupInFile: {
+    label: "รหัสซ้ำในไฟล์",
+    hint: "รหัสเดียวกันมีหลายแถว บันทึกแค่แถวแรก",
+    card: "border-sky-300 bg-sky-50",
+    text: "text-sky-600",
+    check: true,
+  },
+};
+
+// =========================
 // แปลงวันที่จาก Excel
 // =========================
 function formatExcelDate(value: any): string | null {
@@ -772,7 +851,8 @@ const [inSuccessMessage, setInSuccessMessage] = useState("");
 const [outFileName, setOutFileName] = useState("");
 const [outRowCount, setOutRowCount] = useState<number | null>(null);
 const [outPreview, setOutPreview] = useState<any[]>([]);
-const [outProblems, setOutProblems] = useState<{ row: any; reason: string }[]>([]);
+const [outProblems, setOutProblems] = useState<OutProblem[]>([]);
+const [outGroupTab, setOutGroupTab] = useState<OutGroupKey | "allCheck">("allCheck");
 const [isOutLoading, setIsOutLoading] = useState(false);
 const [isOutImporting, setIsOutImporting] = useState(false);
 const [showOutList, setShowOutList] = useState(false);
@@ -2010,18 +2090,51 @@ const handleOutFileUpload = (
       );
 
             // ==========================================
-      // แยกกลุ่ม: พร้อมแจ้งออก / มีปัญหา
+      // แยกกลุ่ม: พร้อมแจ้งออก / กลุ่มที่ต้องตรวจ
       // ==========================================
       const okRows: any[] = [];
-      const problemRows: { row: any; reason: string }[] = [];
+      const problemRows: OutProblem[] = [];
+      const seenCodes = new Set<string>();
 
       for (const c of outCheck) {
+        const code = normCode(c.row.employee_code);
+
+        // รหัสซ้ำกันเองในไฟล์ (เก็บแถวแรก แถวถัดไปให้ตรวจ)
+        if (seenCodes.has(code)) {
+          problemRows.push({
+            row: c.row,
+            group: "dupInFile",
+            reason: "รหัสนี้ซ้ำกันเองในไฟล์",
+          });
+          continue;
+        }
+
+        seenCodes.add(code);
+
         if (c.by === "code") {
           // รหัสตรง + ชื่อตรง
           if (c.db?.status === "ลาออก") {
+            const fileDate = c.row.resignation_date;
+            const dbDate = c.db.resignation_date;
+
+            if (fileDate && dbDate && fileDate !== dbDate) {
+              problemRows.push({
+                row: c.row,
+                group: "dateDiff",
+                reason: `วันที่ในไฟล์ ${fileDate} ไม่ตรงกับในระบบ ${dbDate}`,
+              });
+            } else {
+              problemRows.push({
+                row: c.row,
+                group: "resigned",
+                reason: `ลาออกในระบบแล้ว (${dbDate ?? "ไม่มีวันที่"})`,
+              });
+            }
+          } else if (!c.row.resignation_date) {
             problemRows.push({
               row: c.row,
-              reason: `ในระบบเป็นลาออกอยู่แล้ว (${c.db.resignation_date ?? "ไม่มีวันที่"})`,
+              group: "noDate",
+              reason: "ไฟล์ไม่มีวันที่ลาออก",
             });
           } else {
             okRows.push(c.row);
@@ -2029,11 +2142,19 @@ const handleOutFileUpload = (
         } else if (c.by === "name") {
           problemRows.push({
             row: c.row,
-            reason: "รหัสไม่ตรง จับคู่ได้ด้วยชื่อเท่านั้น",
+            group: "nameOnly",
+            reason: "ไม่พบรหัส แต่ชื่อตรงกับ 1 คนในระบบ",
+          });
+        } else if (c.warning?.startsWith("รหัสตรงแต่ชื่อไม่ตรง")) {
+          problemRows.push({
+            row: c.row,
+            group: "codeNameDiff",
+            reason: c.warning,
           });
         } else {
           problemRows.push({
             row: c.row,
+            group: "notFound",
             reason: c.warning ?? "ไม่พบในฐานข้อมูล",
           });
         }
@@ -2048,19 +2169,17 @@ const handleOutFileUpload = (
       );
 
       console.log(
-        "แจ้งออก คนมีปัญหา:",
+        "แจ้งออก รายกลุ่ม:",
         JSON.stringify(
-          problemRows.map((p) => [
-            p.row.employee_code,
-            p.row.first_name,
-            p.row.last_name,
-            p.reason,
-          ])
+          problemRows.reduce<Record<string, number>>((acc, p) => {
+            acc[p.group] = (acc[p.group] ?? 0) + 1;
+            return acc;
+          }, {})
         )
       );
 
       setOutPreview(okRows);             // เฉพาะคนที่จะบันทึกจริง
-      setOutProblems(problemRows);       // คนที่ต้องไปเช็คเอง
+      setOutProblems(problemRows);       // ทุกกลุ่มที่ต้องดู/ตรวจ
       setOutRowCount(mappedRows.length); // จำนวนทั้งหมดในไฟล์
 
     } catch (err) {
@@ -2113,6 +2232,7 @@ const handleImportOutToSupabase =
 
     setError("");
     setSuccessMessage("");
+    setOutSuccessMessage("");
 
     try {
 
@@ -2229,9 +2349,7 @@ const handleImportOutToSupabase =
 
       }
 
-      setSuccessMessage(
-        message
-      );
+        setOutSuccessMessage(message);
 
       // ==========================================
       // Debug คนที่หาไม่เจอ
@@ -2248,7 +2366,6 @@ const handleImportOutToSupabase =
       }
 
       setOutPreview([]);
-      setOutRowCount(null);
 
     } catch (err) {
 
@@ -3711,6 +3828,23 @@ try {
   }
 };
 
+  const outGroupKeys = Object.keys(OUT_GROUPS) as OutGroupKey[];
+
+  const outGroupCounts = outGroupKeys.reduce((acc, key) => {
+    acc[key] = outProblems.filter((p) => p.group === key).length;
+    return acc;
+  }, {} as Record<OutGroupKey, number>);
+
+  const outCheckTotal = outGroupKeys
+    .filter((key) => OUT_GROUPS[key].check)
+    .reduce((sum, key) => sum + outGroupCounts[key], 0);
+
+  const outModalList = outProblems.filter((p) =>
+    outGroupTab === "allCheck"
+      ? OUT_GROUPS[p.group].check
+      : p.group === outGroupTab
+  );
+
   const inNameList: Employee[] =
   inNameTab === "new"
     ? inNewEmployees
@@ -4209,49 +4343,129 @@ try {
         </div>
       )}
 
-      {!isOutLoading &&
-  outRowCount !== null && (
-    <>
-      <div className="mt-3 flex items-center justify-between">
-        <p className="font-medium text-red-500">
-          ⚠️ แจ้งออก {outRowCount.toLocaleString()} คน
-        </p>
+      {!isOutLoading && outRowCount !== null && (
+        <>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
 
-        {outPreview.length > 0 && (
-          <button
-            type="button"
-            onClick={() =>
-              setShowOutList(!showOutList)
-            }
-            className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-500 transition hover:bg-red-50"
-          >
-            {showOutList
-              ? "ซ่อนรายชื่อ"
-              : "ดูรายชื่อพนักงานออก"}
-          </button>
-        )}
-      </div>
+            {/* ทั้งหมดในไฟล์ */}
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="text-xs text-slate-500">
+                ทั้งหมดในไฟล์
+              </div>
 
-      {showOutList &&
-        outPreview.length > 0 && (
-          <div className="mt-4 max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white">
-            <div className="divide-y divide-slate-100">
-              {outPreview.map(
-                (employee, index) => (
+              <div className="mt-1 text-2xl font-black text-slate-800">
+                {outRowCount.toLocaleString()} คน
+              </div>
+            </div>
+
+            {/* พร้อมแจ้งออก */}
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+              <div className="text-xs text-red-600">
+                พร้อมแจ้งออก
+              </div>
+
+              <div className="mt-1 text-2xl font-black text-red-500">
+                {outPreview.length.toLocaleString()} คน
+              </div>
+
+              <div className="mt-1 text-xs text-slate-500">
+                รหัส+ชื่อตรง ยังไม่ลาออก มีวันที่ครบ
+              </div>
+
+              {outPreview.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowOutList(!showOutList)}
+                  className="mt-3 text-sm font-medium text-red-600 underline hover:text-red-700"
+                >
+                  {showOutList ? "ซ่อนรายชื่อ" : "👀 ดูรายชื่อ"}
+                </button>
+              )}
+            </div>
+
+            {/* การ์ดแต่ละกลุ่ม (แสดงเฉพาะกลุ่มที่มีคน) */}
+            {outGroupKeys.map((key) => {
+              const count = outGroupCounts[key];
+
+              if (count === 0) return null;
+
+              const g = OUT_GROUPS[key];
+
+              return (
+                <div
+                  key={key}
+                  className={`rounded-xl border p-4 ${g.card}`}
+                >
+                  <div className={`text-xs ${g.text}`}>
+                    {g.check ? "⚠️ " : ""}
+                    {g.label}
+                  </div>
+
+                  <div className={`mt-1 text-2xl font-black ${g.text}`}>
+                    {count.toLocaleString()} คน
+                  </div>
+
+                  <div className="mt-1 text-xs text-slate-500">
+                    {g.hint}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOutGroupTab(key);
+                      setShowOutNames(true);
+                    }}
+                    className={`mt-3 text-sm font-medium underline ${g.text}`}
+                  >
+                    👀 ดูรายชื่อ
+                  </button>
+                </div>
+              );
+            })}
+
+          </div>
+
+          {/* แถบเตือนรวม */}
+          {outCheckTotal > 0 && (
+            <div className="mt-4 flex items-center justify-between gap-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+              <p className="text-sm font-medium text-amber-700">
+                ⚠️ มี {outCheckTotal.toLocaleString()} คนที่ต้องตรวจสอบ
+                (ยังไม่ถูกบันทึก ให้ไปเช็คระบบหลังบ้าน)
+              </p>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setOutGroupTab("allCheck");
+                  setShowOutNames(true);
+                }}
+                className="shrink-0 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100"
+              >
+                ดูทั้งหมดที่ต้องตรวจ
+              </button>
+            </div>
+          )}
+
+          {/* รายชื่อพร้อมแจ้งออก */}
+          {showOutList && outPreview.length > 0 && (
+            <div className="mt-4 max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white">
+              <div className="divide-y divide-slate-100">
+                {outPreview.map((employee, index) => (
                   <div
                     key={`${employee.employee_code}-${index}`}
                     className="flex items-center justify-between gap-4 px-4 py-3"
                   >
                     <div>
                       <p className="font-medium text-slate-900">
-                        {employee.title}{" "}
-                        {employee.first_name}{" "}
-                        {employee.last_name}
+                        {employee.title}
+                        {employee.first_name} {employee.last_name}
                       </p>
 
                       <p className="mt-1 text-xs text-slate-500">
-                        รหัสพนักงาน:{" "}
-                        {employee.employee_code}
+                        รหัสพนักงาน: {employee.employee_code}
+                        {employee.resignation_date
+                          ? ` • วันที่ออก ${employee.resignation_date}`
+                          : ""}
                       </p>
                     </div>
 
@@ -4259,39 +4473,150 @@ try {
                       ลาออก
                     </span>
                   </div>
-                )
-              )}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-
-      {outSuccessMessage && (
-        <p className="mt-4 font-medium text-green-600">
-          ✓ {outSuccessMessage}
-        </p>
-      )}
-
-      {outRowCount !== null && (
-        <button
-          type="button"
-          onClick={handleImportOutToSupabase}
-          disabled={isOutImporting}
-          className="mt-4 inline-flex items-center rounded-xl bg-red-500 px-5 py-3 font-medium text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {isOutImporting ? (
-            <>
-              <span className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-              กำลังแจ้งออก...
-            </>
-          ) : (
-            <>
-              💾 บันทึกแจ้งออก
-            </>
           )}
-        </button>
+
+          {/* Modal รายชื่อกลุ่มที่ต้องตรวจ */}
+          {showOutNames && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+              <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+
+                <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">
+                      รายชื่อแจ้งออกที่ต้องตรวจสอบ
+                    </h3>
+
+                    <p className="mt-1 text-sm text-slate-500">
+                      {outModalList.length.toLocaleString()} คน
+                      (ยังไม่ถูกบันทึก ให้ตรวจในระบบหลังบ้าน)
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowOutNames(false)}
+                    className="rounded-lg px-3 py-2 text-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* แท็บเลือกกลุ่ม */}
+                <div className="flex flex-wrap gap-2 border-b border-slate-200 px-6 py-4">
+                  <button
+                    type="button"
+                    onClick={() => setOutGroupTab("allCheck")}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium ${
+                      outGroupTab === "allCheck"
+                        ? "bg-amber-500 text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    ต้องตรวจทั้งหมด {outCheckTotal}
+                  </button>
+
+                  {outGroupKeys.map((key) => {
+                    if (outGroupCounts[key] === 0) return null;
+
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setOutGroupTab(key)}
+                        className={`rounded-lg px-4 py-2 text-sm font-medium ${
+                          outGroupTab === key
+                            ? "bg-slate-700 text-white"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        }`}
+                      >
+                        {OUT_GROUPS[key].label} {outGroupCounts[key]}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="max-h-[60vh] overflow-y-auto px-6 py-3">
+                  {outModalList.map((p, index) => (
+                    <div
+                      key={`${p.row.employee_code}-${index}`}
+                      className="flex items-center justify-between gap-4 border-b border-slate-100 py-3"
+                    >
+                      <div>
+                        <div className="font-medium text-slate-800">
+                          {p.row.title}
+                          {p.row.first_name} {p.row.last_name}
+                        </div>
+
+                        <div className="mt-1 text-xs text-slate-400">
+                          รหัสพนักงาน: {p.row.employee_code}
+                          {p.row.resignation_date
+                            ? ` • วันที่ออก ${p.row.resignation_date}`
+                            : ""}
+                        </div>
+
+                        <div
+                          className={`mt-1 text-xs font-medium ${OUT_GROUPS[p.group].text}`}
+                        >
+                          {OUT_GROUPS[p.group].label}: {p.reason}
+                        </div>
+                      </div>
+
+                      <div className="text-sm text-slate-400">
+                        {index + 1}
+                      </div>
+                    </div>
+                  ))}
+
+                  {outModalList.length === 0 && (
+                    <div className="py-10 text-center text-sm text-slate-400">
+                      ไม่พบรายชื่อ
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end border-t border-slate-200 px-6 py-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowOutNames(false)}
+                    className="rounded-xl bg-slate-100 px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-200"
+                  >
+                    ปิด
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          )}
+
+          {outSuccessMessage && (
+            <p className="mt-4 font-medium text-green-600">
+              ✓ {outSuccessMessage}
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={handleImportOutToSupabase}
+            disabled={isOutImporting || outPreview.length === 0}
+            className="mt-4 inline-flex items-center rounded-xl bg-red-500 px-5 py-3 font-medium text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isOutImporting ? (
+              <>
+                <span className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                กำลังแจ้งออก...
+              </>
+            ) : (
+              <>
+                💾 บันทึกแจ้งออก ({outPreview.length.toLocaleString()} คน)
+              </>
+            )}
+          </button>
+        </>
       )}
-    </>
-  )}
+
     </div>
 
   )}
