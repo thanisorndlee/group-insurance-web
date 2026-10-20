@@ -752,6 +752,7 @@ const [inSuccessMessage, setInSuccessMessage] = useState("");
 const [outFileName, setOutFileName] = useState("");
 const [outRowCount, setOutRowCount] = useState<number | null>(null);
 const [outPreview, setOutPreview] = useState<any[]>([]);
+const [outProblems, setOutProblems] = useState<{ row: any; reason: string }[]>([]);
 const [isOutLoading, setIsOutLoading] = useState(false);
 const [isOutImporting, setIsOutImporting] = useState(false);
 const [showOutList, setShowOutList] = useState(false);
@@ -1798,6 +1799,7 @@ const handleOutFileUpload = (
   setOutPreview([]);
   setShowOutList(false);
   setOutSuccessMessage("");
+  setOutProblems([]);
 
   setError("");
   setSuccessMessage("");
@@ -1976,13 +1978,59 @@ const handleOutFileUpload = (
         )
       );
 
-      setOutPreview(
-        mappedRows
+            // ==========================================
+      // แยกกลุ่ม: พร้อมแจ้งออก / มีปัญหา
+      // ==========================================
+      const okRows: any[] = [];
+      const problemRows: { row: any; reason: string }[] = [];
+
+      for (const c of outCheck) {
+        if (c.by === "code") {
+          // รหัสตรง + ชื่อตรง
+          if (c.db?.status === "ลาออก") {
+            problemRows.push({
+              row: c.row,
+              reason: `ในระบบเป็นลาออกอยู่แล้ว (${c.db.resignation_date ?? "ไม่มีวันที่"})`,
+            });
+          } else {
+            okRows.push(c.row);
+          }
+        } else if (c.by === "name") {
+          problemRows.push({
+            row: c.row,
+            reason: "รหัสไม่ตรง จับคู่ได้ด้วยชื่อเท่านั้น",
+          });
+        } else {
+          problemRows.push({
+            row: c.row,
+            reason: c.warning ?? "ไม่พบในฐานข้อมูล",
+          });
+        }
+      }
+
+      console.log(
+        "แจ้งออก แยกกลุ่ม:",
+        JSON.stringify({
+          ok: okRows.length,
+          problems: problemRows.length,
+        })
       );
 
-      setOutRowCount(
-        mappedRows.length
+      console.log(
+        "แจ้งออก คนมีปัญหา:",
+        JSON.stringify(
+          problemRows.map((p) => [
+            p.row.employee_code,
+            p.row.first_name,
+            p.row.last_name,
+            p.reason,
+          ])
+        )
       );
+
+      setOutPreview(okRows);             // เฉพาะคนที่จะบันทึกจริง
+      setOutProblems(problemRows);       // คนที่ต้องไปเช็คเอง
+      setOutRowCount(mappedRows.length); // จำนวนทั้งหมดในไฟล์
 
     } catch (err) {
 
@@ -2043,34 +2091,7 @@ const handleImportOutToSupabase =
       const currentEmployees =
         await loadAllEmployees();
 
-      // ==========================================
-      // สร้าง Map จาก employee_code
-      // ==========================================
-      const employeeMap =
-        new Map<string, Employee>();
-
-      currentEmployees.forEach(
-        (employee) => {
-
-          const code =
-            String(
-              employee.employee_code ?? ""
-            )
-              .trim()
-              .replace(/\s+/g, "")
-              .toUpperCase();
-
-          if (code) {
-
-            employeeMap.set(
-              code,
-              employee
-            );
-
-          }
-
-        }
-      );
+            const lookup = buildLookup(currentEmployees);
 
       let updatedCount = 0;
 
@@ -2086,19 +2107,11 @@ const handleImportOutToSupabase =
         const row of outPreview
       ) {
 
-        const employeeCode =
-          String(
-            row.employee_code ?? ""
-          )
-            .trim()
-            .replace(/\s+/g, "")
-            .toUpperCase();
+        const employeeCode = normCode(row.employee_code);
 
-        // หา employee
-        const employee =
-          employeeMap.get(
-            employeeCode
-          );
+            // จับคู่ด้วย findEmployee เอาเฉพาะรหัสตรง + ชื่อตรง
+      const match = findEmployee(row, lookup);
+      const employee = match.by === "code" ? match.employee : null;
 
         // ========================================
         // ถ้าไม่พบรหัส
@@ -2107,9 +2120,10 @@ const handleImportOutToSupabase =
 
           notFoundCount++;
 
-          notFoundEmployees.push(
-            `${employeeCode} | ${row.title ?? ""}${row.first_name ?? ""} ${row.last_name ?? ""}`
-          );
+        notFoundEmployees.push(
+          `${employeeCode} | ${row.title ?? ""}${row.first_name ?? ""} ${row.last_name ?? ""}` +
+            (match.warning ? ` | ${match.warning}` : "")
+        );
 
           continue;
         }
@@ -2122,7 +2136,7 @@ const handleImportOutToSupabase =
           error,
         } = await supabase
           .from("employees")
-          .update({
+                    .update({
 
             status:
               "ลาออก",
@@ -2133,6 +2147,9 @@ const handleImportOutToSupabase =
             remark:
               row.remark ||
               employee.remark,
+
+            updated_at:
+              new Date().toISOString(),
 
           })
           .eq(
