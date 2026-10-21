@@ -4604,7 +4604,11 @@ try {
         {/* =========================
             Dashboard
         ========================= */}
-        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-5">
+                <h2 className="mb-3 text-lg font-bold text-slate-900">
+          สรุปพนักงาน
+        </h2>
+
+        <div className="grid gap-5 md:grid-cols-3">
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
             <p className="text-sm text-slate-500">
@@ -4628,7 +4632,7 @@ try {
             </h2>
           </div>
 
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
+            <div className="rounded-2xl bg-white p-6 shadow-sm">
             <p className="text-sm text-slate-500">
               ลาออก
             </p>
@@ -4639,6 +4643,14 @@ try {
               ).length}
             </h2>
           </div>
+
+                  </div>
+
+        <h2 className="mb-3 mt-8 text-lg font-bold text-slate-900">
+          สรุปรายงานเคลม
+        </h2>
+
+        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
   <p className="text-sm text-slate-500">
