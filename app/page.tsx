@@ -478,89 +478,61 @@ const findEmployee = (
 
   return { employee: null, by: "none" };
 };
+
 // =========================
-// สร้าง Map สรุป Claims
+// สรุป Claims ต่อพนักงาน
+// ลองเลขบัตรก่อน ถ้าไม่เจอใช้ชื่อ (เฉพาะกรณีเจอคนเดียว)
 // =========================
-const getClaimSummaryMap = (
-  claims: Claim[]
-) => {
+type ClaimSummary = { opd: number; ipd: number; count: number };
 
-  const claimMap = new Map<
-    string,
-    {
-      opd: number;
-      ipd: number;
-      count: number;
+const getClaimSummary = (claims: Claim[], employees: Employee[]) => {
+  const byId = new Map<string, Employee>();
+  const byName = new Map<string, Employee[]>();
+
+  for (const e of employees) {
+    const id = normId(e.id_card);
+    if (id) byId.set(id, e);
+
+    const nk = normalizeName(`${e.first_name}${e.last_name}`);
+    if (nk) byName.set(nk, [...(byName.get(nk) ?? []), e]);
+  }
+
+  const summary = new Map<string, ClaimSummary>();
+  const unmatched: Claim[] = [];
+  let employeeClaims = 0;
+  let dependentClaims = 0;
+
+  for (const claim of claims) {
+    if (String(claim.relationship ?? "").trim().toUpperCase() !== "E") {
+      dependentClaims++;
+      continue;
     }
-  >();
+    employeeClaims++;
 
-  claims.forEach((claim) => {
-    if (
-  String(claim.relationship ?? "")
-    .trim()
-    .toUpperCase() !== "E"
-) {
-  return;
-}
-
-const idCard = String(
-  claim.id_card ?? ""
-)
-  .trim()
-  .replace(/\D/g, "");
-
-if (!idCard) return;
-
-const current =
-  claimMap.get(idCard) ?? {
-        opd: 0,
-        ipd: 0,
-        count: 0,
-      };
-
-    const claimType = String(
-      claim.claim_type ?? ""
-    )
-      .trim()
-      .toUpperCase();
-
-    const paid = Number(
-      claim.insurance_paid ?? 0
-    );
-
-    // OPD
-    if (
-      claimType.includes("OPD") ||
-      claimType.includes("ผู้ป่วยนอก")
-    ) {
-      current.opd += paid;
+    let emp = byId.get(normId(claim.id_card));
+    if (!emp) {
+      const hits = byName.get(normalizeName(claim.employee_name)) ?? [];
+      if (hits.length === 1) emp = hits[0];
+    }
+    if (!emp?.id) {
+      unmatched.push(claim);
+      continue;
     }
 
-    // IPD
-    if (
-      claimType.includes("IPD") ||
-      claimType.includes("ผู้ป่วยใน")
-    ) {
-      current.ipd += paid;
-    }
+    const cur = summary.get(emp.id) ?? { opd: 0, ipd: 0, count: 0 };
+    const type = String(claim.claim_type ?? "").toUpperCase();
+    const paid = Number(claim.insurance_paid ?? 0);
 
-    // จำนวนรายการเคลม
-    current.count += 1;
+    if (type.includes("OPD") || type.includes("ผู้ป่วยนอก")) cur.opd += paid;
+    if (type.includes("IPD") || type.includes("ผู้ป่วยใน")) cur.ipd += paid;
+    cur.count += 1;
 
-    claimMap.set(
-  idCard,
-  current
-);
+    summary.set(emp.id, cur);
+  }
 
-  });
-
-  console.log(
-    "Claim Summary Map:",
-    Array.from(claimMap.entries()).slice(0, 20)
-  );
-
-  return claimMap;
+  return { summary, unmatched, employeeClaims, dependentClaims };
 };
+
 // =========================
 // โหลดพนักงานทั้งหมดจาก Supabase
 // =========================
@@ -692,143 +664,22 @@ const filteredEmployees = useMemo(() => {
     return matchesSearch && matchesStatus;
   });
 }, [employees, employeeSearchTerm, statusFilter]);
-const claimSummaryMap = useMemo(() => {
-
-  return getClaimSummaryMap(
-    claims
-  );
-
-}, [claims]);
-const matchStats = useMemo(() => {
-  if (claims.length === 0) {
-    return {
-      total: 0,
-      matched: 0,
-      unmatched: 0,
-      employeeClaims: 0,
-      dependentClaims: 0,
-    };
-  }
-
-  const employeeIdCardSet = new Set(
-    employees
-      .map((employee) =>
-        String(employee.id_card ?? "")
-          .trim()
-          .replace(/\D/g, "")
-      )
-      .filter(Boolean)
-  );
-
-  let matched = 0;
-  let unmatched = 0;
-  let employeeClaims = 0;
-  let dependentClaims = 0;
-
-  claims.forEach((claim) => {
-    const relationship = String(
-      claim.relationship ?? ""
-    )
-      .trim()
-      .toUpperCase();
-
-    const claimIdCard = String(
-      claim.id_card ?? ""
-    )
-      .trim()
-      .replace(/\D/g, "");
-
-    // พนักงาน
-    if (relationship === "E") {
-      employeeClaims++;
-
-      if (
-        claimIdCard &&
-        employeeIdCardSet.has(claimIdCard)
-      ) {
-        matched++;
-      } else {
-        unmatched++;
-      }
-    } else {
-      // คู่สมรส / บุตร / บุคคลอื่น
-      dependentClaims++;
-    }
-  });
-
-  return {
-    total: claims.length,
-    matched,
-    unmatched,
-    employeeClaims,
-    dependentClaims,
-  };
-}, [claims, employees]);
-const matchedEmployeeCount = useMemo(() => {
-
-  return employees.filter((employee) => {
-
-    const employeeIdCard = String(
-      employee.id_card ?? ""
-    )
-      .trim()
-      .replace(/\D/g, "");
-
-    if (!employeeIdCard) {
-      return false;
-    }
-
-    return claimSummaryMap.has(employeeIdCard);
-
-  }).length;
-
-}, [employees, claimSummaryMap]);
-useEffect(() => {
-  if (employees.length === 0 || claims.length === 0) return;
-
-const employeeIdCardSet = new Set(
-  employees
-    .map((employee) =>
-      String(employee.id_card ?? "")
-        .trim()
-        .replace(/\D/g, "")
-    )
-    .filter(Boolean)
+const claimResult = useMemo(
+  () => getClaimSummary(claims, employees),
+  [claims, employees]
 );
 
-const unmatchedClaims = claims.filter((claim) => {
+const claimSummaryMap = claimResult.summary;
 
-  const claimIdCard = String(
-    claim.id_card ?? ""
-  )
-    .trim()
-    .replace(/\D/g, "");
+const matchStats = {
+  total: claims.length,
+  employeeClaims: claimResult.employeeClaims,
+  dependentClaims: claimResult.dependentClaims,
+  matched: claimResult.employeeClaims - claimResult.unmatched.length,
+  unmatched: claimResult.unmatched.length,
+};
 
-  return (
-    claimIdCard === "" ||
-    !employeeIdCardSet.has(claimIdCard)
-  );
-});
 
-  console.log("========== ตรวจสอบ Claims ==========");
-  console.log("Claims ทั้งหมด:", claims.length);
-  console.log("Match ไม่ได้:", unmatchedClaims.length);
-
-console.log(
-  "Claims ที่ Match ไม่ได้ทั้งหมด:",
-  unmatchedClaims.map((claim, index) => ({
-    ลำดับ: index + 1,
-    ชื่อในไฟล์เคลม: claim.employee_name,
-    บัตรประชาชนในไฟล์เคลม: claim.id_card,
-    ความสัมพันธ์: claim.relationship,
-    ประเภทเคลม: claim.claim_type,
-    สังกัด: claim.affiliation,
-    เลขที่เคลม: claim.claim_no,
-  }))
-);
-
-  console.log("====================================");
-}, [employees, claims]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -2301,9 +2152,9 @@ const handleImportOutToSupabase =
             resignation_date:
               row.resignation_date,
 
-            remark:
-              row.remark ||
-              employee.remark,
+            remark: row.remark
+              ? [employee.remark, row.remark].filter(Boolean).join(" | ")
+              : employee.remark,
 
             updated_at:
               new Date().toISOString(),
@@ -2424,8 +2275,80 @@ const handleClaimFileUpload = (
         cellDates: true,
       });
 
-      const firstSheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[firstSheetName];
+            // เลือกชีตเคลมอัตโนมัติ จากชื่อชีต + หัวตารางในชีต
+      const normSheet = (s: string) =>
+        String(s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+
+      const CLAIM_NAME_WORDS = ["claim", "เคลม", "health"];
+      const CLAIM_HEADER_WORDS = [
+        "ความสัมพันธ์",
+        "เลขที่รับเรื่อง",
+        "เลขที่อ้างอิง",
+        "ประเภทการเคลม",
+        "สถานพยาบาล",
+        "บริษัทฯจ่าย",
+        "บริษัทจ่าย",
+        "เลขบัตร",
+        "ใบเสร็จ",
+        "ชื่อ-สกุล",
+      ];
+
+      const visibleSheets = workbook.SheetNames.filter(
+        (_name, index) =>
+          (workbook.Workbook?.Sheets?.[index]?.Hidden ?? 0) === 0
+      );
+
+      const scored = visibleSheets.map((name) => {
+        const sheetRows = XLSX.utils.sheet_to_json<any[]>(
+          workbook.Sheets[name],
+          { header: 1, defval: "" }
+        );
+
+        // รวมข้อความ 20 แถวแรกไว้หาคำหัวตาราง
+        const headText = normSheet(
+          sheetRows
+            .slice(0, 20)
+            .map((r) => r.join(" "))
+            .join(" ")
+        );
+
+        const headerHits = CLAIM_HEADER_WORDS.filter((w) =>
+          headText.includes(normSheet(w))
+        ).length;
+
+        const nameHits = CLAIM_NAME_WORDS.filter((w) =>
+          normSheet(name).includes(w)
+        ).length;
+
+        return {
+          name,
+          headerHits,
+          rowCount: sheetRows.length,
+          score: headerHits * 10 + nameHits * 3,
+        };
+      });
+
+      scored.sort(
+        (a, b) => b.score - a.score || b.rowCount - a.rowCount
+      );
+
+      console.log("ชีตเคลม ให้คะแนน:", JSON.stringify(scored));
+
+      const best = scored[0];
+
+      // มีชีตเดียว ใช้เลย ไม่ต้องตรวจหัวตาราง
+      // มีหลายชีต ต้องมีหัวตารางเคลมอย่างน้อย 1 คำ
+      if (!best || (visibleSheets.length > 1 && best.headerHits === 0)) {
+        throw new Error(
+          `ไม่พบชีตที่เป็นข้อมูลเคลมในไฟล์ (ชีตที่มี: ${workbook.SheetNames.join(", ")})`
+        );
+      }
+
+      const claimSheetName = best.name;
+
+      console.log("ชีตที่เลือก (เคลม):", JSON.stringify(claimSheetName));
+
+      const worksheet = workbook.Sheets[claimSheetName];
 
       const rows = XLSX.utils.sheet_to_json<any[]>(worksheet, {
         header: 1,
@@ -5130,28 +5053,12 @@ try {
             // =========================
             // ข้อมูลการเคลม
             // =========================
-const employeeIdCard = String(
-  employee.id_card ?? ""
-)
-  .trim()
-  .replace(/\D/g, "");
-
 const claimSummary =
-  claimSummaryMap.get(employeeIdCard) ?? {
+  claimSummaryMap.get(employee.id ?? "") ?? {
     opd: 0,
     ipd: 0,
     count: 0,
   };
-
-          if (
-            claimSummary.count > 0
-          ) {
-           console.log(
-  "MATCH เจอ:",
-  employeeIdCard,
-  claimSummary
-);
-          }
             return (
 
               <tr
