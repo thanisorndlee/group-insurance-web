@@ -971,7 +971,7 @@ const mappedEmployees: Employee[] = dataRows
       bank_name: String(row[14] ?? "").trim(),
       phone: String(row[15] ?? "").trim(),
 
-      remark: String(row[17] ?? "").trim(),
+      remark: String(row[16] ?? "").trim(),
 
       resignation_date: null,
       status: "มีผลประกัน",
