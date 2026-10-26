@@ -830,6 +830,11 @@ try {
       });
 
       const worksheet = workbook.Sheets["ทำ"];
+      if (!worksheet) {
+        throw new Error(
+        `ไม่พบชีต "ทำ" ในไฟล์ (ชีตที่มี: ${workbook.SheetNames.join(", ")})`
+      );
+}
 
       const rows = XLSX.utils.sheet_to_json<any[]>(worksheet, {
         header: 1,
@@ -939,6 +944,7 @@ const mappedEmployees: Employee[] = dataRows
 // ให้เหลือพนักงาน 1 คน
 // =========================
 const employeeMap = new Map<string, Employee>();
+const skippedNoId: Employee[] = [];
 
 for (const employee of mappedEmployees) {
   const idCard = String(employee.id_card ?? "")
@@ -946,7 +952,8 @@ for (const employee of mappedEmployees) {
     .replace(/\D/g, "");
 
   // ถ้าไม่มีเลขบัตรประชาชน ให้ข้าม
-  if (!idCard) {
+    if (!idCard) {
+    skippedNoId.push(employee);
     continue;
   }
 
@@ -990,6 +997,17 @@ if (existing) {
         : existing.status,
   });
 }
+}
+
+if (skippedNoId.length > 0) {
+  console.warn("ข้ามพนักงานที่ไม่มีเลขบัตร:", skippedNoId);
+  setError(
+    `ข้ามพนักงานที่ไม่มีเลขบัตร ${skippedNoId.length} คน: ` +
+      skippedNoId
+        .slice(0, 10)
+        .map((e) => `${e.employee_code} ${e.first_name}`)
+        .join(", ")
+  );
 }
 
 const uniqueEmployees =
@@ -1078,7 +1096,7 @@ setRowCount(uniqueEmployees.length);
       "เกิดข้อผิดพลาดในการอ่านไฟล์แจ้งเข้า"
     );
 
-    setIsInLoading(false);
+    setIsLoading(false);
 
   };
 
@@ -3427,7 +3445,7 @@ const rowsToUpsert =
         employee.employment_date,
 
       plan:
-        employee.plan,
+        existingEmployee?.plan ?? employee.plan,
 
       department:
         employee.department,
@@ -3444,11 +3462,15 @@ const rowsToUpsert =
       remark:
         employee.remark,
 
-      resignation_date:
-        employee.resignation_date,
+            resignation_date:
+        existingEmployee?.status === "ลาออก"
+          ? existingEmployee.resignation_date
+          : employee.resignation_date,
 
       status:
-        employee.status,
+        existingEmployee?.status === "ลาออก"
+          ? "ลาออก"
+          : employee.status,
 
       // ==========================================
       // ข้อมูลจากไฟล์ประกันส่งกลับ
