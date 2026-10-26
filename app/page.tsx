@@ -857,6 +857,14 @@ try {
       // แถวที่ 3 เป็นต้นไป = ข้อมูลพนักงาน
       // ---------------------------------
       const dataRows = rows.slice(4);
+      console.log(
+  "แถวตัวอย่างไฟล์ตั้งต้น:",
+  JSON.stringify(
+    dataRows.slice(0, 3).map((r) =>
+      r.slice(0, 12).map((v: any, i: number) => [i, String(v)])
+    )
+  )
+);
 
 
 const mappedEmployees: Employee[] = dataRows
