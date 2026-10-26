@@ -837,6 +837,38 @@ try {
       );
 }
 
+      // ตัดขอบเขตชีตให้เหลือเฉพาะแถวที่มีข้อมูลจริง
+      // (กันไฟล์ที่ format ลากยาวเป็นหมื่นแถว ทำให้หน้าเว็บค้าง)
+      const originalRef = worksheet["!ref"];
+      console.log("ขอบเขตชีตเดิม:", originalRef);
+
+      if (originalRef) {
+        const range = XLSX.utils.decode_range(originalRef);
+        let lastRow = range.s.r;
+
+        for (const key of Object.keys(worksheet)) {
+          if (key[0] === "!") continue;
+
+          const cell = XLSX.utils.decode_cell(key);
+          const value = worksheet[key]?.v;
+
+          if (
+            value !== undefined &&
+            value !== null &&
+            String(value).trim() !== "" &&
+            cell.r > lastRow
+          ) {
+            lastRow = cell.r;
+          }
+        }
+
+        range.e.r = Math.min(range.e.r, lastRow);
+        range.e.c = Math.min(range.e.c, 30);
+        worksheet["!ref"] = XLSX.utils.encode_range(range);
+      }
+
+      console.log("ขอบเขตชีตหลังตัด:", worksheet["!ref"]);
+      
       const rows = XLSX.utils.sheet_to_json<any[]>(worksheet, {
         header: 1,
         defval: "",
@@ -4871,7 +4903,7 @@ try {
 
         ) : (
 
-          filteredEmployees.map((employee, index) => {
+          filteredEmployees.slice(0, 300).map((employee, index) => {
 
             // =========================
             // จำนวนวันที่มีประกัน
