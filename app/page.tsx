@@ -824,9 +824,10 @@ try {
         throw new Error("ไม่พบข้อมูลไฟล์");
       }
 
-      const workbook = XLSX.read(data, {
+            const workbook = XLSX.read(data, {
         type: "array",
         cellDates: true,
+        sheets: "ทำ",
       });
 
       const worksheet = workbook.Sheets["ทำ"];
@@ -841,7 +842,6 @@ try {
         defval: "",
       });
 
-      console.log("ข้อมูลทั้งหมดจาก Excel:", rows);
      
       if (rows.length < 3) {
         throw new Error(
@@ -1061,11 +1061,6 @@ console.log(
       (employee) => employee.status === "ลาออก"
     )
     .slice(0, 20)
-);
-
-console.log(
-  "ข้อมูลหลังรวมพนักงานซ้ำ:",
-  uniqueEmployees
 );
 
 console.log(
