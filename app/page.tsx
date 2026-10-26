@@ -892,6 +892,35 @@ try {
       // ---------------------------------
       // ไฟล์จริงมีคอลัมน์เพิ่มที่ C (ค่า B/H) ตัดออกให้ตำแหน่งตรงกับที่โค้ดคาดไว้
 const dataRows = rows.slice(4).map((r) => r.filter((_, i) => i !== 2));
+// ===== ตรวจคอลัมน์ ลาออก (S=17) / วันที่มีผลลาออก (T=18) =====
+const sCount: Record<string, number> = {};
+for (const r of dataRows) {
+  const v = String(r[17] ?? "").trim() || "(ว่าง)";
+  sCount[v] = (sCount[v] ?? 0) + 1;
+}
+console.log(
+  "คอลัมน์ S ค่าที่พบ:",
+  JSON.stringify(Object.entries(sCount).sort((a, b) => b[1] - a[1]).slice(0, 15))
+);
+
+console.log(
+  "ตัวอย่างแถวที่ S หรือ T ไม่ว่าง:",
+  JSON.stringify(
+    dataRows
+      .filter((r) => String(r[17] ?? "").trim() !== "" || String(r[18] ?? "").trim() !== "")
+      .slice(0, 8)
+      .map((r) => [r[2], r[4], String(r[17]), String(r[18])])
+  )
+);
+
+console.log(
+  "ตัวอย่างคนซ้ำ [รหัส, วันเริ่มงาน K, วันมีผล L, S, T]:",
+  JSON.stringify(
+    dataRows
+      .filter((r) => ["รุ่งนภา", "ภูพิพรรธน์", "พีรนัฐ"].includes(String(r[4]).trim()))
+      .map((r) => [r[2], r[4], String(r[9]), String(r[10]), String(r[17]), String(r[18])])
+  )
+);
       console.log(
   "แถวตัวอย่างไฟล์ตั้งต้น:",
   JSON.stringify(
