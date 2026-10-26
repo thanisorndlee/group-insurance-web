@@ -141,10 +141,12 @@ const OUT_GROUPS: Record<
 function formatExcelDate(value: any): string | null {
   if (!value) return null;
 
-    if (value instanceof Date) {
-  const year = value.getUTCFullYear();
-  const month = String(value.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(value.getUTCDate()).padStart(2, "0");
+  if (value instanceof Date) {
+  // บวก 12 ชม. กันเวลาเพี้ยนไม่กี่วินาทีจนวันที่ถอยหลัง 1 วัน
+  const d = new Date(value.getTime() + 12 * 60 * 60 * 1000);
+  const year = d.getUTCFullYear();
+  const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
 }
@@ -888,7 +890,8 @@ try {
       // แถวที่ 2 = Header ภาษาอังกฤษ
       // แถวที่ 3 เป็นต้นไป = ข้อมูลพนักงาน
       // ---------------------------------
-      const dataRows = rows.slice(4);
+      // ไฟล์จริงมีคอลัมน์เพิ่มที่ C (ค่า B/H) ตัดออกให้ตำแหน่งตรงกับที่โค้ดคาดไว้
+const dataRows = rows.slice(4).map((r) => r.filter((_, i) => i !== 2));
       console.log(
   "แถวตัวอย่างไฟล์ตั้งต้น:",
   JSON.stringify(
@@ -1106,6 +1109,7 @@ console.log(
 );
 setEmployees(uniqueEmployees);
 setRowCount(uniqueEmployees.length);
+console.log("ตัวอย่างพนักงานหลัง mapping:", JSON.stringify(uniqueEmployees.slice(0, 3), null, 2));
 
 
     } catch (err) {
