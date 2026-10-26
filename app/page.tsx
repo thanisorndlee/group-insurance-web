@@ -988,6 +988,7 @@ const mappedEmployees: Employee[] = dataRows
 // =========================
 const employeeMap = new Map<string, Employee>();
 const skippedNoId: Employee[] = [];
+const mergedDuplicates: string[][] = [];
 
 for (const employee of mappedEmployees) {
   const idCard = String(employee.id_card ?? "")
@@ -1007,6 +1008,12 @@ for (const employee of mappedEmployees) {
     employeeMap.set(idCard, employee);
     continue;
   }
+mergedDuplicates.push([
+  existing.employee_code,
+  employee.employee_code,
+  employee.first_name,
+  employee.last_name,
+]);
 
   // ถ้าเจอข้อมูลซ้ำ ให้เติมข้อมูลที่ขาดจากแถวใหม่
 if (existing) {
@@ -1041,7 +1048,7 @@ if (existing) {
   });
 }
 }
-
+console.log("แถวซ้ำที่ถูกรวม:", JSON.stringify(mergedDuplicates));
 if (skippedNoId.length > 0) {
   console.warn("ข้ามพนักงานที่ไม่มีเลขบัตร:", skippedNoId);
   setError(
