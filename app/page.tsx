@@ -1496,8 +1496,9 @@ let updatedEmploymentCount = 0;
 for (const inEmployee of inAllEmployees) {
   const code = normCode(inEmployee.employee_code);
 
-  const masterEmployee = findEmployee(inEmployee, lookup).employee;
-
+const match = findEmployee(inEmployee, lookup);
+const masterEmployee =
+  match.by === "id_card" || match.by === "code" ? match.employee : null;
   if (!masterEmployee) continue;
 
   // เติมเฉพาะกรณี Master ไม่มีวันที่เริ่มงาน
@@ -2283,7 +2284,7 @@ const handleClaimFileUpload = (
 
   const reader = new FileReader();
 
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
     try {
       const data = e.target?.result;
 
@@ -2656,7 +2657,7 @@ const handleInsuranceFileUpload = (
 
   const reader = new FileReader();
 
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
     try {
       const data = e.target?.result;
 
@@ -2829,7 +2830,8 @@ setInsuranceRowCount(
 // ==========================================
 // จับคู่ด้วยเลขบัตรประชาชนเป็นหลัก
 // ==========================================
-const matchLookup = buildLookup(employees);
+const dbForInsurance = await loadAllEmployees();
+const matchLookup = buildLookup(dbForInsurance);
 
 const matched: Employee[] = [];
 const unmatched: Employee[] = [];
@@ -2971,7 +2973,7 @@ console.log(
 );
 
 // ตรวจเทียบแบบละเอียด (ดูอย่างเดียว ไม่เขียนข้อมูล)
-const insLookup = buildLookup(employees);
+const insLookup = buildLookup(dbForInsurance);
 
 const sameNameAs = (a: Employee, b: Employee) =>
   nameKey(a.first_name, a.last_name) === nameKey(b.first_name, b.last_name);
@@ -3510,50 +3512,33 @@ const chunkSize = 500;
 
 let totalImported = 0;
 
-for (
-  let i = 0;
-  i < rowsToUpsert.length;
-  i += chunkSize
-) {
+// คนเดิม (มี id) → upsert / คนใหม่ (ไม่มี id) → insert แยกกัน
+const rowsToUpdate = rowsToUpsert.filter((r) => "id" in r);
+const rowsToInsert = rowsToUpsert.filter((r) => !("id" in r));
 
-  const chunk =
-    rowsToUpsert.slice(
-      i,
-      i + chunkSize
-    );
+const saveRows = async (
+  rows: typeof rowsToUpsert,
+  mode: "upsert" | "insert"
+) => {
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows.slice(i, i + chunkSize);
 
-  console.log(
-    `💾 กำลังบันทึก ${
-      i + 1
-    } - ${
-      i + chunk.length
-    } / ${
-      rowsToUpsert.length
-    }`
-  );
+    const { error } =
+      mode === "upsert"
+        ? await supabase.from("employees").upsert(chunk)
+        : await supabase.from("employees").insert(chunk);
 
-  const { error } =
-    await supabase
-      .from("employees")
-      .upsert(chunk);
+    if (error) {
+      console.error("❌ Supabase Error:", error);
+      throw new Error(`บันทึกข้อมูลพนักงานไม่สำเร็จ: ${error.message}`);
+    }
 
-  if (error) {
-
-    console.error(
-      "❌ Supabase Upsert Error:",
-      error
-    );
-
-    throw new Error(
-      `บันทึกข้อมูลพนักงานไม่สำเร็จ: ${
-        error.message
-      }`
-    );
+    totalImported += chunk.length;
   }
+};
 
-  totalImported +=
-    chunk.length;
-}
+await saveRows(rowsToUpdate, "upsert");
+await saveRows(rowsToInsert, "insert");
 
 console.log(
   "✅ บันทึกข้อมูลสำเร็จ:",
