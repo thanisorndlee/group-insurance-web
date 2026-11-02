@@ -802,6 +802,8 @@ try {
 
   console.log("📂 FILE ที่เลือก:", file);
 
+  console.log("VERSION: merge-v3");
+
   if (!file) {
     console.log("❌ ไม่มีไฟล์ถูกเลือก");
     return;
