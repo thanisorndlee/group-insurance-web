@@ -1015,68 +1015,100 @@ const mappedEmployees: Employee[] = dataRows
 // เช่น แถวทำงาน + แถวลาออก
 // ให้เหลือพนักงาน 1 คน
 // =========================
+// ตัวอย่างคอลัมน์ 17-30 ของคนที่ลาออก (ใช้หาว่าวันที่ลาออกอยู่คอลัมน์ไหน)
+console.log(
+  "ตัวอย่างคอลัมน์ 17-30 ของคนที่ลาออก:",
+  JSON.stringify(
+    dataRows
+      .filter((r) => String(r[17] ?? "").trim() !== "")
+      .slice(0, 5)
+      .map((r) => r.slice(17, 31).map((v: any) => String(v).slice(0, 40)))
+  )
+);
+
+// แถวที่ผ่านตัวกรองเดิม (ลำดับตรงกับ mappedEmployees)
+const validRows = dataRows.filter((row) => {
+  const employeeCode = String(row[2] ?? "").trim();
+  const firstName = String(row[4] ?? "").trim();
+  const lastName = String(row[5] ?? "").trim();
+
+  return (
+    employeeCode !== "" &&
+    (firstName !== "" || lastName !== "")
+  );
+});
+
+type RowMeta = { eff: string; reason: string };
+
 const employeeMap = new Map<string, Employee>();
+const eMeta = new Map<string, RowMeta>();
 const skippedNoId: Employee[] = [];
 const mergedDuplicates: string[][] = [];
 
-for (const employee of mappedEmployees) {
+mappedEmployees.forEach((employee, i) => {
   const idCard = String(employee.id_card ?? "")
     .trim()
     .replace(/\D/g, "");
 
-  // ถ้าไม่มีเลขบัตรประชาชน ให้ข้าม
-    if (!idCard) {
+  if (!idCard) {
     skippedNoId.push(employee);
-    continue;
+    return;
   }
+
+  const meta: RowMeta = {
+    eff: formatExcelDate(validRows[i][10]) ?? "",
+    reason: String(validRows[i][17] ?? "").trim(),
+  };
 
   const existing = employeeMap.get(idCard);
+  const existingMeta = eMeta.get(idCard);
 
   // คนนี้ยังไม่เคยเจอ
-  if (!existing) {
-    employeeMap.set(idCard, employee);
-    continue;
+  if (!existing || !existingMeta) {
+    employeeMap.set(idCard, {
+      ...employee,
+      status: meta.reason ? "ลาออก" : "มีผลประกัน",
+    });
+    eMeta.set(idCard, meta);
+    return;
   }
-mergedDuplicates.push([
-  existing.employee_code,
-  employee.employee_code,
-  employee.first_name,
-  employee.last_name,
-]);
 
-  // ถ้าเจอข้อมูลซ้ำ ให้เติมข้อมูลที่ขาดจากแถวใหม่
-if (existing) {
+  // เจอซ้ำ: เลือกแถวที่ วันมีผลบังคับ ใหม่กว่า (เท่ากันเอารหัสมากกว่า)
+  const incomingIsNewer =
+    meta.eff > existingMeta.eff ||
+    (meta.eff === existingMeta.eff &&
+      employee.employee_code.localeCompare(
+        existing.employee_code,
+        undefined,
+        { numeric: true }
+      ) > 0);
+
+  const winner = incomingIsNewer ? employee : existing;
+  const winnerMeta = incomingIsNewer ? meta : existingMeta;
+  const loser = incomingIsNewer ? existing : employee;
+  const loserMeta = incomingIsNewer ? existingMeta : meta;
+
+  // [รหัสที่เก็บ, รหัสที่ทิ้ง, ชื่อ, เหตุผลลาออกของแถวที่เก็บ, ของแถวที่ทิ้ง]
+  mergedDuplicates.push([
+    winner.employee_code,
+    loser.employee_code,
+    `${winner.first_name} ${winner.last_name}`,
+    winnerMeta.reason || "-",
+    loserMeta.reason || "-",
+  ]);
+
   employeeMap.set(idCard, {
-    ...existing,
-
-    employment_date:
-      existing.employment_date ||
-      employee.employment_date,
-
-    effective_date:
-      existing.effective_date ||
-      employee.effective_date,
-
-    insurance_type:
-      existing.insurance_type ||
-      employee.insurance_type,
-
-    plan:
-      existing.plan ?? employee.plan,
-
-    // ถ้ามีวันที่ลาออก ให้ถือว่าลาออก
-    resignation_date:
-      employee.resignation_date ||
-      existing.resignation_date,
-
-    status:
-      employee.resignation_date ||
-      existing.resignation_date
-        ? "ลาออก"
-        : existing.status,
+    ...winner,
+    plan: winner.plan ?? loser.plan,
+    remark:
+      loser.employee_code !== winner.employee_code
+        ? `${winner.remark} [รหัสเดิม ${loser.employee_code}]`.trim()
+        : winner.remark,
+    status: winnerMeta.reason ? "ลาออก" : "มีผลประกัน",
   });
-}
-}
+  eMeta.set(idCard, winnerMeta);
+});
+
 console.log("แถวซ้ำที่ถูกรวม:", JSON.stringify(mergedDuplicates));
 if (skippedNoId.length > 0) {
   console.warn("ข้ามพนักงานที่ไม่มีเลขบัตร:", skippedNoId);
