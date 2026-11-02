@@ -1040,7 +1040,7 @@ const validRows = dataRows.filter((row) => {
   );
 });
 
-type RowMeta = { eff: string; reason: string };
+type RowMeta = { eff: string; reason: string; resign: string };
 
 const employeeMap = new Map<string, Employee>();
 const eMeta = new Map<string, RowMeta>();
@@ -1060,6 +1060,7 @@ mappedEmployees.forEach((employee, i) => {
   const meta: RowMeta = {
     eff: formatExcelDate(validRows[i][10]) ?? "",
     reason: String(validRows[i][17] ?? "").trim(),
+    resign: formatExcelDate(validRows[i][19]) ?? "",
   };
 
   const existing = employeeMap.get(idCard);
@@ -1070,6 +1071,7 @@ mappedEmployees.forEach((employee, i) => {
     employeeMap.set(idCard, {
       ...employee,
       status: meta.reason ? "ลาออก" : "มีผลประกัน",
+      resignation_date: meta.reason ? meta.resign || null : null,
     });
     eMeta.set(idCard, meta);
     return;
@@ -1106,7 +1108,8 @@ mappedEmployees.forEach((employee, i) => {
       loser.employee_code !== winner.employee_code
         ? `${winner.remark} [รหัสเดิม ${loser.employee_code}]`.trim()
         : winner.remark,
-    status: winnerMeta.reason ? "ลาออก" : "มีผลประกัน",
+        status: winnerMeta.reason ? "ลาออก" : "มีผลประกัน",
+    resignation_date: winnerMeta.reason ? winnerMeta.resign || null : null,
   });
   eMeta.set(idCard, winnerMeta);
 });
@@ -1125,6 +1128,19 @@ if (skippedNoId.length > 0) {
 
 const uniqueEmployees =
   Array.from(employeeMap.values());
+  console.log(
+  "ลาออกแต่ไม่มีวันที่:",
+  uniqueEmployees.filter((e) => e.status === "ลาออก" && !e.resignation_date).length
+);
+console.log(
+  "ตัวอย่างวันที่ลาออก:",
+  JSON.stringify(
+    uniqueEmployees
+      .filter((e) => e.resignation_date)
+      .slice(0, 5)
+      .map((e) => [e.employee_code, e.first_name, e.resignation_date])
+  )
+);
   console.log(
   "🔎 ตรวจ effective_date / insurance_type:",
   uniqueEmployees.slice(0, 20).map((employee) => ({
